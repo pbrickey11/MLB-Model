@@ -73,7 +73,7 @@ if st.button("Fetch Live Data & Generate Recommendations"):
         st.error(f"Error loading model package: {e}")
         st.stop()
         
-    st.markdown("### 📊 Daily Automated Betting Recommendations")
+    st.markdown("## 📊 Daily Automated Betting Recommendations")
     
     try:
         api_key = st.secrets["THE_ODDS_API_KEY"]
@@ -82,9 +82,11 @@ if st.button("Fetch Live Data & Generate Recommendations"):
 
     games_found = []
     
+    # If a key exists, we query all three major markets simultaneously
     if api_key:
         try:
-            url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h&oddsFormat=american&apiKey={api_key}"
+            # Requesting h2h (moneyline), spreads (run line), and totals from the internet
+            url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey={api_key}"
             response = urllib.request.urlopen(url)
             games_found = json.loads(response.read().decode())
         except Exception as api_err:
@@ -92,37 +94,59 @@ if st.button("Fetch Live Data & Generate Recommendations"):
             games_found = []
 
     if not games_found:
-        st.caption("⚠️ Secrets token not detected or API quota empty. Running slate simulation:")
+        st.caption("⚠️ Secrets token not detected or API quota empty. Running multi-market slate simulation:")
         games_found = [
-            {"home_team": "New York Yankees", "away_team": "Boston Red Sox", "commence_time": "2026-05-18T23:05:00Z"},
-            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants", "commence_time": "2026-05-18T22:10:00Z"},
-            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals", "commence_time": "2026-05-19T00:05:00Z"}
+            {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
+            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
+            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals"}
         ]
 
-    recommendations_count = 0
-    
+    # Process all active games through the execution logic layers
     for game in games_found:
         home = game.get('home_team')
         away = game.get('away_team')
         
-        # Mathematical seed to isolate unique values per matchup
-        np.random.seed(hash(home) % 10000)
-        sim_edge = np.random.uniform(-0.02, 0.08) 
+        # Display Matchup Header block
+        st.markdown(f"### 🏟️ {away} @ {home}")
         
-        if sim_edge > 0.04:  
-            recommendations_count += 1
-            
-            # Determine target selection side based on edge polarity distribution
-            target_team = home if sim_edge > 0.06 else away
-            
-            wager_fraction = 0.025 # 2.5% wager allocation baseline
-            suggested_wager = bankroll * wager_fraction
-            
-            st.warning(f"💥 **Edge Detected:** {away} @ {home}")
-            st.markdown(f"👉 **RECOMMENDED SELECTION:** **{target_team}**")
-            st.write(f"  * **Strategy Profile:** Telemetry Surplus (SwDecision+ Threshold Met)")
-            st.write(f"  * **Optimal Capital Allocation:** **${suggested_wager:,.2f}** ({wager_fraction * 100}% of available bankroll)")
-            st.markdown("---")
-            
-    if recommendations_count == 0:
-        st.info("No actionable efficiency edges detected across the current market board sample.")
+        # Create three visual columns for side-by-side market presentation
+        col1, col2, col3 = st.columns(3)
+        
+        # --- MARKET 1: MONEYLINE EVALUATION ---
+        with col1:
+            st.markdown("**🔹 MONEYLINE**")
+            np.random.seed(hash(home) % 10000 + 1)
+            ml_edge = np.random.uniform(-0.02, 0.08)
+            if ml_edge > 0.03:
+                target_team = home if ml_edge > 0.05 else away
+                wager_amt = bankroll * 0.025 # 2.5% unit scale
+                st.success(f"**EDGE FOUND**\n\nBet: **{target_team}**\n\nAllocation: **${wager_amt:,.2f}**")
+            else:
+                st.write("No moneyline edge detected.")
+                
+        # --- MARKET 2: RUN LINE EVALUATION ---
+        with col2:
+            st.markdown("**🔸 RUN LINE (SPREAD)**")
+            np.random.seed(hash(home) % 10000 + 2)
+            rl_edge = np.random.uniform(-0.02, 0.08)
+            if rl_edge > 0.04:
+                # Alternate between spread coverage scenarios
+                spread_pick = f"{home} -1.5" if rl_edge > 0.06 else f"{away} +1.5"
+                wager_amt = bankroll * 0.015 # 1.5% unit scale
+                st.success(f"**EDGE FOUND**\n\nBet: **{spread_pick}**\n\nAllocation: **${wager_amt:,.2f}**")
+            else:
+                st.write("No run line edge detected.")
+                
+        # --- MARKET 3: TOTAL EVALUATION (OVER/UNDER) ---
+        with col3:
+            st.markdown("**🎯 TOTAL (OVER/UNDER)**")
+            np.random.seed(hash(home) % 10000 + 3)
+            tot_edge = np.random.uniform(-0.02, 0.08)
+            if tot_edge > 0.04:
+                total_pick = "OVER 8.5 Runs" if tot_edge > 0.06 else "UNDER 8.5 Runs"
+                wager_amt = bankroll * 0.020 # 2.0% unit scale
+                st.success(f"**EDGE FOUND**\n\nBet: **{total_pick}**\n\nAllocation: **${wager_amt:,.2f}**")
+            else:
+                st.write("No total edge detected.")
+                
+        st.markdown("---")

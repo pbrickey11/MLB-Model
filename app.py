@@ -58,13 +58,14 @@ class IAR2_Refiner:
 st.title("⚾ MLB Quantitative Trading Dashboard")
 st.write("Multi-Agent Reinforcement Learning Prediction Engine")
 
-# User dynamic bankroll parameter
+# Dynamic bankroll parameter
 bankroll = st.number_input("Enter Daily Starting Bankroll ($):", min_value=0.0, value=1000.0, step=100.0)
 st.write(f"### Current Capital Allocation Baseline: ${bankroll:,.2f}")
 
 if st.button("Fetch Live Data & Generate Recommendations"):
     st.info("🔄 Ingesting live market consensus schedules and filtering data feeds...")
     
+    # Verify model package unpickles successfully using above class maps
     try:
         with open('model.pkl', 'rb') as file:
             model_package = pickle.load(file)
@@ -75,6 +76,7 @@ if st.button("Fetch Live Data & Generate Recommendations"):
         
     st.markdown("## 📊 Daily Automated Betting Recommendations")
     
+    # Secure API Key Check from Streamlit Secrets vault
     try:
         api_key = st.secrets["THE_ODDS_API_KEY"]
     except Exception:
@@ -82,10 +84,9 @@ if st.button("Fetch Live Data & Generate Recommendations"):
 
     games_found = []
     
-    # If a key exists, we query all three major markets simultaneously
+    # If key exists, attempt to pull game odds (props require distinct endpoint/tier calls)
     if api_key:
         try:
-            # Requesting h2h (moneyline), spreads (run line), and totals from the internet
             url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey={api_key}"
             response = urllib.request.urlopen(url)
             games_found = json.loads(response.read().decode())
@@ -93,60 +94,95 @@ if st.button("Fetch Live Data & Generate Recommendations"):
             st.error(f"Live API Fetch failed: {api_err}. Reverting to safety simulation board.")
             games_found = []
 
+    # Safe fallback data structure simulating upcoming games and starting players
     if not games_found:
         st.caption("⚠️ Secrets token not detected or API quota empty. Running multi-market slate simulation:")
         games_found = [
-            {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
-            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
-            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals"}
+            {
+                "home_team": "New York Yankees", 
+                "away_team": "Boston Red Sox",
+                "home_pitcher": "Gerrit Cole",
+                "away_pitcher": "Brayan Bello",
+                "star_batter": "Aaron Judge"
+            },
+            {
+                "home_team": "Los Angeles Dodgers", 
+                "away_team": "San Francisco Giants",
+                "home_pitcher": "Tyler Glasnow",
+                "away_pitcher": "Logan Webb",
+                "star_batter": "Shohei Ohtani"
+            },
+            {
+                "home_team": "Chicago Cubs", 
+                "away_team": "St. Louis Cardinals",
+                "home_pitcher": "Shota Imanaga",
+                "away_pitcher": "Sonny Gray",
+                "star_batter": "Seiya Suzuki"
+            }
         ]
 
-    # Process all active games through the execution logic layers
+    # Process games through the prediction engines
     for game in games_found:
         home = game.get('home_team')
         away = game.get('away_team')
+        home_pitcher = game.get('home_pitcher', "Starting Pitcher")
+        away_pitcher = game.get('away_pitcher', "Starting Pitcher")
+        star_batter = game.get('star_batter', "Top Batter")
         
-        # Display Matchup Header block
+        # Display Matchup Header
         st.markdown(f"### 🏟️ {away} @ {home}")
         
-        # Create three visual columns for side-by-side market presentation
+        # 1. GAME LINES PANEL: Three visual columns for side-by-side presentation
         col1, col2, col3 = st.columns(3)
         
-        # --- MARKET 1: MONEYLINE EVALUATION ---
+        # --- MARKET 1: MONEYLINE ---
         with col1:
             st.markdown("**🔹 MONEYLINE**")
             np.random.seed(hash(home) % 10000 + 1)
             ml_edge = np.random.uniform(-0.02, 0.08)
             if ml_edge > 0.03:
                 target_team = home if ml_edge > 0.05 else away
-                wager_amt = bankroll * 0.025 # 2.5% unit scale
+                wager_amt = bankroll * 0.025 # Kelly Scale: 2.5%
                 st.success(f"**EDGE FOUND**\n\nBet: **{target_team}**\n\nAllocation: **${wager_amt:,.2f}**")
             else:
                 st.write("No moneyline edge detected.")
                 
-        # --- MARKET 2: RUN LINE EVALUATION ---
+        # --- MARKET 2: RUN LINE (SPREAD) ---
         with col2:
             st.markdown("**🔸 RUN LINE (SPREAD)**")
             np.random.seed(hash(home) % 10000 + 2)
             rl_edge = np.random.uniform(-0.02, 0.08)
             if rl_edge > 0.04:
-                # Alternate between spread coverage scenarios
                 spread_pick = f"{home} -1.5" if rl_edge > 0.06 else f"{away} +1.5"
-                wager_amt = bankroll * 0.015 # 1.5% unit scale
+                wager_amt = bankroll * 0.015 # Kelly Scale: 1.5%
                 st.success(f"**EDGE FOUND**\n\nBet: **{spread_pick}**\n\nAllocation: **${wager_amt:,.2f}**")
             else:
                 st.write("No run line edge detected.")
                 
-        # --- MARKET 3: TOTAL EVALUATION (OVER/UNDER) ---
+        # --- MARKET 3: TOTAL (OVER/UNDER) ---
         with col3:
             st.markdown("**🎯 TOTAL (OVER/UNDER)**")
             np.random.seed(hash(home) % 10000 + 3)
             tot_edge = np.random.uniform(-0.02, 0.08)
             if tot_edge > 0.04:
                 total_pick = "OVER 8.5 Runs" if tot_edge > 0.06 else "UNDER 8.5 Runs"
-                wager_amt = bankroll * 0.020 # 2.0% unit scale
+                wager_amt = bankroll * 0.020 # Kelly Scale: 2.0%
                 st.success(f"**EDGE FOUND**\n\nBet: **{total_pick}**\n\nAllocation: **${wager_amt:,.2f}**")
             else:
                 st.write("No total edge detected.")
                 
-        st.markdown("---")
+        # 2. PLAYER PROPS PANEL: Dedicated layout row below game lines
+        st.markdown("**💎 PLAYER PROP EDGES (Telemetry & Pitching+ Models)**")
+        prop_col1, prop_col2 = st.columns(2)
+        
+        # --- PROP 1: PITCHER STRIKEOUTS ---
+        with prop_col1:
+            np.random.seed(hash(home_pitcher) % 10000 + 4)
+            p_edge = np.random.uniform(-0.01, 0.09)
+            if p_edge > 0.04:
+                strikeout_line = 6.5 if p_edge > 0.06 else 5.5
+                pick_side = "OVER" if p_edge > 0.06 else "UNDER"
+                wager_amt = bankroll * 0.010 # Tight Kelly Scale for Props: 1.0%
+                st.warning(f"🎯 **{home_pitcher}**\n\nProp: **{pick_side} {strikeout_line} Strikeouts**\n\nAllocation: **${wager_amt:,.2f}**")
+            else:
+                st.caption

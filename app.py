@@ -310,7 +310,6 @@ with nav_tab_1:
             
         df_board = pd.DataFrame(raw_rows)
 
-        # STATE-SAFE SUBMISSION FORM: Protects buttons from disappearing on change events
         with st.form("bet_slip_submission_form", clear_on_submit=False):
             edited_df = st.data_editor(
                 df_board,
@@ -327,7 +326,6 @@ with nav_tab_1:
                 hide_index=True, use_container_width=True, key="live_editor_grid"
             )
 
-            # Form Action Submission Trigger
             form_submit_clicked = st.form_submit_button("🔒 Lock & Commit Active Bet Slip to Cloud Vault")
 
         confirmed_bets = edited_df[edited_df["Place Bet?"] == True]
@@ -368,7 +366,6 @@ with nav_tab_1:
                     st.write(f"  * **Risk Allocation:** **${wager_amt:,.2f}**")
                     st.markdown("---")
 
-        # Database Pipeline Commit Block
         if form_submit_clicked and bets_placed_count > 0:
             if db_conn is not None:
                 try:
@@ -412,3 +409,8 @@ with nav_tab_2:
                     settled_df = segment_df[segment_df["Settled Status"].isin(["WIN", "LOSS", "PUSH"])]
                     staked = settled_df["Risk Amount"].sum()
                     net_profit = 0.0
+                    
+                    for _, row in settled_df.iterrows():
+                        status = row["Settled Status"]
+                        risk = row["Risk Amount"]
+                        if status == "

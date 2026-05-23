@@ -129,7 +129,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     
     if api_key:
         try:
-            # FIX APPLIED: Changed the trailing space to a proper forward slash right before 'v4'
             schedule_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h&apiKey={api_key}"
             response = urllib.request.urlopen(schedule_url)
             games_found = json.loads(response.read().decode())
@@ -177,6 +176,9 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     # PHASE 1: THE SCANNING LOOP
     # =====================================================================
     all_potential_wagers = []
+    
+    # Track evaluated props to block doubleheader duplication anomalies completely
+    already_scanned_player_props = set()
     
     for game in games_found:
         home = game.get('home_team')
@@ -226,31 +228,35 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                 "raw_edge": tot_edge, "fraction": min(0.03, 0.04 * kelly_fraction)
             })
                 
-        # --- Evaluate Pitcher Strikeout Prop Market ---
-        seed_p = generate_stable_seed(home + "_PROP_PITCHER_SO", 4000)
-        np.random.seed(seed_p % 9999999)
-        p_edge = np.random.uniform(-0.01, 0.09)
-        if p_edge > 0.04:
-            strikeout_line = 6.5 if p_edge > 0.06 else 5.5
-            pick_side = "OVER" if p_edge > 0.06 else "UNDER"
-            all_potential_wagers.append({
-                "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
-                "selection": f"{home_pitcher} {pick_side} {strikeout_line} Strikeouts",
-                "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
-            })
+        # --- Evaluate Pitcher Strikeout Prop Market (With De-Duplication Circuit Breaker) ---
+        if home_pitcher not in already_scanned_player_props:
+            seed_p = generate_stable_seed(home + "_PROP_PITCHER_SO", 4000)
+            np.random.seed(seed_p % 9999999)
+            p_edge = np.random.uniform(-0.01, 0.09)
+            if p_edge > 0.04:
+                strikeout_line = 6.5 if p_edge > 0.06 else 5.5
+                pick_side = "OVER" if p_edge > 0.06 else "UNDER"
+                all_potential_wagers.append({
+                    "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
+                    "selection": f"{home_pitcher} {pick_side} {strikeout_line} Strikeouts",
+                    "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+                })
+            already_scanned_player_props.add(home_pitcher)
 
-        # --- Evaluate Batter Total Bases Prop Market ---
-        seed_b = generate_stable_seed(home + "_PROP_BATTER_TB", 5000)
-        np.random.seed(seed_b % 9999999)
-        b_edge = np.random.uniform(-0.01, 0.09)
-        if b_edge > 0.04:
-            base_line = 1.5
-            pick_side = "OVER" if b_edge > 0.06 else "UNDER"
-            all_potential_wagers.append({
-                "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
-                "selection": f"{star_batter} {pick_side} {base_line} Total Bases",
-                "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
-            })
+        # --- Evaluate Batter Total Bases Prop Market (With De-Duplication Circuit Breaker) ---
+        if star_batter not in already_scanned_player_props:
+            seed_b = generate_stable_seed(home + "_PROP_BATTER_TB", 5000)
+            np.random.seed(seed_b % 9999999)
+            b_edge = np.random.uniform(-0.01, 0.09)
+            if b_edge > 0.04:
+                base_line = 1.5
+                pick_side = "OVER" if b_edge > 0.06 else "UNDER"
+                all_potential_wagers.append({
+                    "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
+                    "selection": f"{star_batter} {pick_side} {base_line} Total Bases",
+                    "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+                })
+            already_scanned_player_props.add(star_batter)
 
         # --- Evaluate Game Prop Market ---
         seed_g = generate_stable_seed(home + "_MARKET_GAMEPROP", 6000)

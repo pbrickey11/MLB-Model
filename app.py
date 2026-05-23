@@ -33,7 +33,7 @@ def generate_stable_seed(string_input: str, offset: int) -> int:
 
 def convert_prob_to_american_odds(prob: float) -> str:
     if prob <= 0 or prob >= 1: return "+100"
-    return f"-{int(round((prob / (1.0 - prob)) * 100.0))}" if prob > 0.50 else f"+{int(round(((1.0 - prob) / prob) * 100.0))}"
+    return f"-{int(round((prob / (1.0 - prob)) * 100.0))}" if prob > 0.50_f else f"+{int(round(((1.0 - prob) / prob) * 100.0))}"
 
 def calculate_payout(odds_str: str, risk: float) -> float:
     try:
@@ -42,29 +42,38 @@ def calculate_payout(odds_str: str, risk: float) -> float:
     except Exception: return risk
 
 # =====================================================================
-# 2. RUNTIME GRAPHICAL INTERFACE LAYER
+# 2. RUNTIME GRAPHICAL INTERFACE LAYER & VAULT HANDSHAKE
 # =====================================================================
 st.set_page_config(layout="wide")
 st.title("⚾ MLB Quantitative Trading Dashboard")
 
-# CRYPTOGRAPHIC VAULT RECONSTRUCTION: Manually builds a clean RSA key block in volatile memory
+db_conn = None
+
 try:
     sec = st.secrets["connections"]["gsheets"]
     raw = sec["raw_key"].replace(" ", "").replace("\n", "")
-    # Slice the solid string block into clean 64-character lines
     chunks = [raw[i:i+64] for i in range(0, len(raw), 64)]
     formatted_key = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(chunks) + "\n-----END PRIVATE KEY-----\n"
     
-    # Overwrite the credential map in memory before initializing the gsheets driver
-    st.secrets["connections"]["gsheets"]["private_key"] = formatted_key
-except Exception as parse_error:
-    st.error(f"Cryptographic reconstruction failed: {parse_error}")
-
-try:
-    db_conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error(f"Google Sheets Connection Driver Error: {e}")
-    db_conn = None
+    # Securely reconstruct a complete service account dictionary map in memory
+    custom_credentials_dict = {
+        "type": "service_account",
+        "project_id": sec["project_id"],
+        "private_key_id": sec["private_key_id"],
+        "private_key": formatted_key,
+        "client_email": sec["client_email"],
+        "token_uri": "https://oauth2.googleapis.com/token"  # Standard routing target added natively
+    }
+    
+    # Pass the reconstructed credentials directly to the Streamlit database initialization block
+    db_conn = st.connection(
+        "gsheets",
+        type=GSheetsConnection,
+        spreadsheet=sec["spreadsheet"],
+        **custom_credentials_dict
+    )
+except Exception as conn_error:
+    st.error(f"🔗 Secure Cloud Database Authentication Link Failed: {conn_error}")
 
 nav_tab_1, nav_tab_2 = st.tabs(["🚀 Live Edge Calculator", "📊 Financial Performance Audit Vault"])
 

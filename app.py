@@ -203,4 +203,107 @@ def execute_slate_optimization_callback():
             spread_pick = f"{home} -1.5" if rl_edge > 0.06 else f"{away} +1.5"
             all_potential_wagers.append({
                 "matchup": matchup_name, "type": "🔸 RUN LINE", "selection": spread_pick,
-                "raw_edge": rl_edge, "fraction": min(
+                "raw_edge": rl_edge, "fraction": min(0.025, 0.04 * kelly_fraction)
+            })
+                
+        # --- Evaluate Game Total Market ---
+        seed_tot = generate_stable_seed(home + "_MARKET_TOTAL", 3000)
+        np.random.seed(seed_tot % 9999999)
+        tot_edge = np.random.uniform(-0.02, 0.08)
+        if tot_edge > 0.04:
+            total_pick = "OVER 8.5 Runs" if tot_edge > 0.06 else "UNDER 8.5 Runs"
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": "🎯 GAME TOTAL", "selection": total_pick,
+                "raw_edge": tot_edge, "fraction": min(0.03, 0.04 * kelly_fraction)
+            })
+                
+        # --- Evaluate Pitcher Strikeout Prop Market ---
+        if home_pitcher not in already_scanned_player_props:
+            seed_p = generate_stable_seed(home_pitcher + "_PROP_PITCHER_SO", 4000)
+            np.random.seed(seed_p % 9999999)
+            p_edge = np.random.uniform(-0.01, 0.09)
+            if p_edge > 0.04:
+                strikeout_line = 6.5 if p_edge > 0.06 else 5.5
+                pick_side = "OVER" if p_edge > 0.06 else "UNDER"
+                all_potential_wagers.append({
+                    "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
+                    "selection": f"{home_pitcher} {pick_side} {strikeout_line} Strikeouts",
+                    "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+                })
+            already_scanned_player_props.add(home_pitcher)
+
+        # --- Evaluate Batter Total Bases Prop Market ---
+        if star_batter not in already_scanned_player_props:
+            seed_b = generate_stable_seed(star_batter + "_PROP_BATTER_TB", 5000)
+            np.random.seed(seed_b % 9999999)
+            b_edge = np.random.uniform(-0.01, 0.09)
+            if b_edge > 0.04:
+                base_line = 1.5
+                pick_side = "OVER" if b_edge > 0.06 else "UNDER"
+                all_potential_wagers.append({
+                    "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
+                    "selection": f"{star_batter} {pick_side} {base_line} Total Bases",
+                    "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+                })
+            already_scanned_player_props.add(star_batter)
+
+        # --- Evaluate Game Prop Market ---
+        seed_g = generate_stable_seed(home + "_MARKET_GAMEPROP", 6000)
+        np.random.seed(seed_g % 9999999)
+        g_edge = np.random.uniform(-0.02, 0.08)
+        if g_edge > 0.04:
+            if g_edge > 0.06:
+                prop_selection = f"First Inning Total Runs: OVER 0.5"
+            elif g_edge > 0.05:
+                prop_selection = f"Team to Score First: {home}"
+            else:
+                prop_selection = "Will There Be an Extra Inning?: YES"
+                
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": "💎 GAME PROP", "selection": prop_selection,
+                "raw_edge": g_edge, "fraction": min(0.020, 0.03 * kelly_fraction)
+            })
+
+    st.session_state.cached_optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
+    st.session_state.trading_slate_calculated = True
+
+# Execute state routine via on_click parameter to keep layout containers locked
+st.button("Scan Complete Slate & Optimize Bets", on_click=execute_slate_optimization_callback)
+
+# =====================================================================
+# 3. DISPLAY LAYER (PERSISTENT RENDER CONTAINER)
+# =====================================================================
+if st.session_state.trading_slate_calculated:
+    st.markdown("## 📊 Mathematical Edge Ranking (Sorted Optimization Model)")
+    st.write("The model completed multi-endpoint event queries. Capital is deployed from highest to lowest edge strength:")
+    
+    running_total_liability = 0.0
+    
+    for idx, bet in enumerate(st.session_state.cached_optimized_wagers):
+        if running_total_liability >= max_daily_liability:
+            st.caption("🔒 *Remaining edges suppressed: Portfolio exposure limit has been achieved for the day.*")
+            break
+            
+        wager_fraction = bet["fraction"]
+        wager_amt = bankroll * wager_fraction
+        
+        if running_total_liability + wager_amt > max_daily_liability:
+            wager_amt = max_daily_liability - running_total_liability
+            wager_fraction = wager_amt / bankroll
+            
+        if wager_amt > 0.01:
+            running_total_liability += wager_amt
+            
+            with st.container():
+                st.warning(f"🏆 **Edge Strength Rank: +{bet['raw_edge']*100:.2f}%** | {bet['matchup']}")
+                st.write(f"  * **Market Type:** {bet['type']}")
+                st.markdown(f"  * 👉 **RECOMMENDED SELECTION:** **{bet['selection']}**")
+                st.write(f"  * **Optimal Risk Allocation:** **${wager_amt:,.2f}** ({wager_fraction * 100:.1f}% of total bankroll)")
+                st.markdown("---")
+                
+    if not st.session_state.cached_optimized_wagers:
+        st.info("No actionable efficiency edges detected across the current market board sample.")
+        
+    st.write(f"### 🛡️ Global Portfolio Risk Management Summary")
+    st.write(f"Total Capital Allocated: **${running_total_liability:,.2f}** / Max Allowed: ${max_daily_liability:,.2f}")
+    st.write(f"Actual Bankroll Exposure: **{ (running_total_liability / bankroll) * 100:.2f}%** out of a maximum {daily_max_exposure_pct}.00%")

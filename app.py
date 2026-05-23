@@ -74,42 +74,8 @@ max_daily_liability = bankroll * (daily_max_exposure_pct / 100.0)
 st.write(f"### Current Capital Allocation Baseline: ${bankroll:,.2f}")
 st.write(f"⚠️ **Maximum Daily Portfolio Liability Limit:** ${max_daily_liability:,.2f} ({daily_max_exposure_pct}% max exposure)")
 
-# The Roster Vault Matrix providing exact real player substitutions for blanks
-ROSTER_VAULT = {
-    "Cincinnati Reds": {"pitcher": "Hunter Greene", "batter": "Elly De La Cruz"},
-    "San Diego Padres": {"pitcher": "Dylan Cease", "batter": "Manny Machado"},
-    "New York Yankees": {"pitcher": "Gerrit Cole", "batter": "Aaron Judge"},
-    "Los Angeles Dodgers": {"pitcher": "Tyler Glasnow", "batter": "Shohei Ohtani"},
-    "Chicago Cubs": {"pitcher": "Shota Imanaga", "batter": "Seiya Suzuki"},
-    "Baltimore Orioles": {"pitcher": "Corbin Burnes", "batter": "Gunnar Henderson"},
-    "Oakland Athletics": {"pitcher": "JP Sears", "batter": "Brent Rooker"},
-    "Boston Red Sox": {"pitcher": "Lucas Giolito", "batter": "Rafael Devers"},
-    "San Francisco Giants": {"pitcher": "Logan Webb", "batter": "Matt Chapman"},
-    "St. Louis Cardinals": {"pitcher": "Sonny Gray", "batter": "Nolan Arenado"},
-    "Cleveland Guardians": {"pitcher": "Tanner Bibee", "batter": "José Ramírez"},
-    "Houston Astros": {"pitcher": "Framber Valdez", "batter": "Yordan Alvarez"},
-    "Atlanta Braves": {"pitcher": "Spencer Strider", "batter": "Ronald Acuña Jr."},
-    "Philadelphia Phillies": {"pitcher": "Zack Wheeler", "batter": "Bryce Harper"},
-    "Texas Rangers": {"pitcher": "Jacob deGrom", "batter": "Corey Seager"},
-    "Toronto Blue Jays": {"pitcher": "Kevin Gausman", "batter": "Vladimir Guerrero Jr."},
-    "Seattle Mariners": {"pitcher": "Luis Castillo", "batter": "Julio Rodríguez"},
-    "Miami Marlins": {"pitcher": "Sandy Alcántara", "batter": "Jake Burger"},
-    "New York Mets": {"pitcher": "Kodai Senga", "batter": "Francisco Lindor"},
-    "Washington Nationals": {"pitcher": "MacKenzie Gore", "batter": "CJ Abrams"},
-    "Tampa Bay Rays": {"pitcher": "Shane Baz", "batter": "Yandy Díaz"},
-    "Chicago White Sox": {"pitcher": "Garrett Crochet", "batter": "Luis Robert Jr."},
-    "Detroit Tigers": {"pitcher": "Tarik Skubal", "batter": "Riley Greene"},
-    "Kansas City Royals": {"pitcher": "Cole Ragans", "batter": "Bobby Witt Jr."},
-    "Minnesota Twins": {"pitcher": "Pablo López", "batter": "Byron Buxton"},
-    "Colorado Rockies": {"pitcher": "Kyle Freeland", "batter": "Ezequiel Tovar"},
-    "Arizona Diamondbacks": {"pitcher": "Zac Gallen", "batter": "Corbin Carroll"},
-    "Los Angeles Angels": {"pitcher": "Patrick Sandoval", "batter": "Mike Trout"},
-    "Milwaukee Brewers": {"pitcher": "Freddy Peralta", "batter": "William Contreras"},
-    "Pittsburgh Pirates": {"pitcher": "Mitch Keller", "batter": "Oneil Cruz"}
-}
-
 if st.button("Scan Complete Slate & Optimize Bets"):
-    st.info("🔄 Ingesting live game props and normalizing player roster feeds...")
+    st.info("🔄 Querying live endpoints and dynamically parsing active prop rosters...")
     
     try:
         with open('model.pkl', 'rb') as file:
@@ -133,6 +99,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             response = urllib.request.urlopen(schedule_url)
             games_found = json.loads(response.read().decode())
             
+            # Query player prop books for specific event matches dynamically
             for match in games_found[:3]:
                 match_id = match.get('id')
                 home_team_name = match.get('home_team')
@@ -146,54 +113,50 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                         for market in bookmakers[0].get('markets', []):
                             market_key = market.get('key')
                             outcomes = market.get('outcomes', [])
-                            if outcomes:
-                                player_name = outcomes[0].get('description')
-                                if player_name:
-                                    if home_team_name not in live_props_extracted:
-                                        live_props_extracted[home_team_name] = {}
-                                    if market_key == 'player_strikeouts':
-                                        live_props_extracted[home_team_name]['pitcher'] = player_name
-                                    elif market_key == 'player_total_bases':
-                                        live_props_extracted[home_team_name]['batter'] = player_name
+                            
+                            # DYNAMIC EXTRACTION LAYER: Collect all active listed athletes straight from the bookmaker payload
+                            if home_team_name not in live_props_extracted:
+                                live_props_extracted[home_team_name] = {'pitchers': [], 'batters': []}
+                                
+                            for outcome in outcomes:
+                                name_string = outcome.get('description')
+                                if name_string:
+                                    if market_key == 'player_strikeouts' and name_string not in live_props_extracted[home_team_name]['pitchers']:
+                                        live_props_extracted[home_team_name]['pitchers'].append(name_string)
+                                    elif market_key == 'player_total_bases' and name_string not in live_props_extracted[home_team_name]['batters']:
+                                        live_props_extracted[home_team_name]['batters'].append(name_string)
                 except Exception:
                     pass
                     
         except Exception as api_err:
-            st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
+            st.error(f"Live API Fetch dropped: {api_err}. Reverting to simulation board.")
             games_found = []
 
+    # Safe simulation dataset structure
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
             {"home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals"},
             {"home_team": "San Diego Padres", "away_team": "Oakland Athletics"},
             {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
-            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
-            {"home_team": "Chicago Cubs", "away_team": "Milwaukee Brewers"}
+            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"}
         ]
+        live_props_extracted = {
+            "Cincinnati Reds": {"pitchers": ["Hunter Greene"], "batters": ["Elly De La Cruz"]},
+            "San Diego Padres": {"pitchers": ["Dylan Cease"], "batters": ["Manny Machado"]},
+            "New York Yankees": {"pitchers": ["Gerrit Cole"], "batters": ["Aaron Judge"]},
+            "Los Angeles Dodgers": {"pitchers": ["Tyler Glasnow"], "batters": ["Shohei Ohtani"]}
+        }
 
     # =====================================================================
     # PHASE 1: THE SCANNING LOOP
     # =====================================================================
     all_potential_wagers = []
     
-    # Track evaluated props to block doubleheader duplication anomalies completely
-    already_scanned_player_props = set()
-    
     for game in games_found:
         home = game.get('home_team')
         away = game.get('away_team')
         matchup_name = f"{away} @ {home}"
-        
-        # Resolve Player Names from Roster Vault matrix
-        home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
-        star_batter = live_props_extracted.get(home, {}).get('batter')
-        
-        if not home_pitcher or any(x in str(home_pitcher) for x in ["Starter", "Pitcher", "Unknown"]):
-            home_pitcher = ROSTER_VAULT[home]["pitcher"] if home in ROSTER_VAULT else f"{home} Ace"
-                
-        if not star_batter or any(x in str(star_batter) for x in ["Hitter", "Batter", "Lead", "Unknown"]):
-            star_batter = ROSTER_VAULT[home]["batter"] if home in ROSTER_VAULT else f"{home} Slugger"
         
         # --- Evaluate Moneyline Market ---
         seed_ml = generate_stable_seed(home + "_MARKET_MONEYLINE", 1000)
@@ -227,10 +190,11 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                 "matchup": matchup_name, "type": "🎯 GAME TOTAL", "selection": total_pick,
                 "raw_edge": tot_edge, "fraction": min(0.03, 0.04 * kelly_fraction)
             })
-                
-        # --- Evaluate Pitcher Strikeout Prop Market (With De-Duplication Circuit Breaker) ---
-        if home_pitcher not in already_scanned_player_props:
-            seed_p = generate_stable_seed(home + "_PROP_PITCHER_SO", 4000)
+
+        # --- Evaluate ALL Live Extracted Pitchers dynamically ---
+        active_pitchers = live_props_extracted.get(home, {}).get('pitchers', [])
+        for pitcher_name in active_pitchers:
+            seed_p = generate_stable_seed(pitcher_name + "_SO_PROP", 4000)
             np.random.seed(seed_p % 9999999)
             p_edge = np.random.uniform(-0.01, 0.09)
             if p_edge > 0.04:
@@ -238,14 +202,14 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                 pick_side = "OVER" if p_edge > 0.06 else "UNDER"
                 all_potential_wagers.append({
                     "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
-                    "selection": f"{home_pitcher} {pick_side} {strikeout_line} Strikeouts",
+                    "selection": f"{pitcher_name} {pick_side} {strikeout_line} Strikeouts",
                     "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
                 })
-            already_scanned_player_props.add(home_pitcher)
 
-        # --- Evaluate Batter Total Bases Prop Market (With De-Duplication Circuit Breaker) ---
-        if star_batter not in already_scanned_player_props:
-            seed_b = generate_stable_seed(home + "_PROP_BATTER_TB", 5000)
+        # --- Evaluate ALL Live Extracted Batters dynamically ---
+        active_batters = live_props_extracted.get(home, {}).get('batters', [])
+        for batter_name in active_batters:
+            seed_b = generate_stable_seed(batter_name + "_TB_PROP", 5000)
             np.random.seed(seed_b % 9999999)
             b_edge = np.random.uniform(-0.01, 0.09)
             if b_edge > 0.04:
@@ -253,23 +217,16 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                 pick_side = "OVER" if b_edge > 0.06 else "UNDER"
                 all_potential_wagers.append({
                     "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
-                    "selection": f"{star_batter} {pick_side} {base_line} Total Bases",
+                    "selection": f"{batter_name} {pick_side} {base_line} Total Bases",
                     "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
                 })
-            already_scanned_player_props.add(star_batter)
 
         # --- Evaluate Game Prop Market ---
         seed_g = generate_stable_seed(home + "_MARKET_GAMEPROP", 6000)
         np.random.seed(seed_g % 9999999)
         g_edge = np.random.uniform(-0.02, 0.08)
         if g_edge > 0.04:
-            if g_edge > 0.06:
-                prop_selection = f"First Inning Total Runs: OVER 0.5"
-            elif g_edge > 0.05:
-                prop_selection = f"Team to Score First: {home}"
-            else:
-                prop_selection = "Will There Be an Extra Inning?: YES"
-                
+            prop_selection = f"First Inning Total Runs: OVER 0.5" if g_edge > 0.06 else f"Team to Score First: {home}"
             all_potential_wagers.append({
                 "matchup": matchup_name, "type": "💎 GAME PROP", "selection": prop_selection,
                 "raw_edge": g_edge, "fraction": min(0.020, 0.03 * kelly_fraction)

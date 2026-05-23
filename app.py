@@ -55,7 +55,7 @@ def generate_stable_seed(string_input: str, offset: int) -> int:
     return int(sha256_encoded[:8], 16) + offset
 
 # =====================================================================
-# 2. STREAMLIT INTERACTIVE USER INTERFACE & RISK MANAGEMENT PANEL
+# 2. STREAMLIT INTERACTIVE USER INTERFACE & PORTFOLIO LOGIC
 # =====================================================================
 
 st.title("⚾ MLB Quantitative Trading Dashboard")
@@ -73,6 +73,22 @@ max_daily_liability = bankroll * (daily_max_exposure_pct / 100.0)
 
 st.write(f"### Current Capital Allocation Baseline: ${bankroll:,.2f}")
 st.write(f"⚠️ **Maximum Daily Portfolio Liability Limit:** ${max_daily_liability:,.2f} ({daily_max_exposure_pct}% max exposure)")
+
+# -----------------------------------------------------------------
+# THE ROSTER VAULT: Explicitly anchors players to their correct teams
+# -----------------------------------------------------------------
+ROSTER_VAULT = {
+    "Cincinnati Reds": {"pitcher": "Hunter Greene", "batter": "Elly De La Cruz"},
+    "San Diego Padres": {"pitcher": "Dylan Cease", "batter": "Manny Machado"},
+    "New York Yankees": {"pitcher": "Gerrit Cole", "batter": "Aaron Judge"},
+    "Los Angeles Dodgers": {"pitcher": "Tyler Glasnow", "batter": "Shohei Ohtani"},
+    "Chicago Cubs": {"pitcher": "Shota Imanaga", "batter": "Seiya Suzuki"},
+    "Baltimore Orioles": {"pitcher": "Corbin Burnes", "batter": "Gunnar Henderson"},
+    "Oakland Athletics": {"pitcher": "JP Sears", "batter": "Brent Rooker"},
+    "Boston Red Sox": {"pitcher": "Lucas Giolito", "batter": "Rafael Devers"},
+    "San Francisco Giants": {"pitcher": "Logan Webb", "batter": "Matt Chapman"},
+    "St. Louis Cardinals": {"pitcher": "Sonny Gray", "batter": "Nolan Arenado"}
+}
 
 if st.button("Scan Complete Slate & Optimize Bets"):
     st.info("🔄 Ingesting live game props and player telemetry rosters...")
@@ -93,9 +109,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     games_found = []
     live_props_extracted = {}
     
-    # -----------------------------------------------------------------
-    # THE EVENT-PROP PIPELINE: Extract Exact Player Names Securely
-    # -----------------------------------------------------------------
     if api_key:
         try:
             # Step 1: Fetch active matches to get game IDs
@@ -103,8 +116,8 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             response = urllib.request.urlopen(schedule_url)
             games_found = json.loads(response.read().decode())
             
-            # Step 2: Loop through the live IDs and query the event prop end-point for exact names
-            for match in games_found[:3]: # Scan top games to stay within free-tier rate limits safely
+            # Step 2: Query the event prop endpoint for active live matchups
+            for match in games_found[:3]:
                 match_id = match.get('id')
                 home_team_name = match.get('home_team')
                 try:
@@ -112,7 +125,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                     prop_resp = urllib.request.urlopen(prop_url)
                     prop_json = json.loads(prop_resp.read().decode())
                     
-                    # Extract player names from outcomes blocks
                     bookmakers = prop_json.get('bookmakers', [])
                     if bookmakers:
                         for market in bookmakers[0].get('markets', []):
@@ -128,21 +140,21 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                                     elif market_key == 'player_total_bases':
                                         live_props_extracted[home_team_name]['batter'] = player_name
                 except Exception:
-                    pass # Safely jump to fallbacks if an entry is blank
+                    pass
                     
         except Exception as api_err:
             st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
             games_found = []
 
-    # Safe fallback data structure with exact real names if no API key is present
+    # Safe fallback schedule block
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
-            {"home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals", "home_pitcher": "Hunter Greene", "star_batter": "Elly De La Cruz"},
-            {"home_team": "San Diego Padres", "away_team": "Oakland Athletics", "home_pitcher": "Dylan Cease", "star_batter": "Manny Machado"},
-            {"home_team": "New York Yankees", "away_team": "Boston Red Sox", "home_pitcher": "Gerrit Cole", "star_batter": "Aaron Judge"},
-            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants", "home_pitcher": "Tyler Glasnow", "star_batter": "Shohei Ohtani"},
-            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals", "home_pitcher": "Shota Imanaga", "star_batter": "Seiya Suzuki"}
+            {"home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals"},
+            {"home_team": "San Diego Padres", "away_team": "Oakland Athletics"},
+            {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
+            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
+            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals"}
         ]
 
     # =====================================================================
@@ -155,20 +167,25 @@ if st.button("Scan Complete Slate & Optimize Bets"):
         away = game.get('away_team')
         matchup_name = f"{away} @ {home}"
         
-        # Resolve Player Names: First try the deep internet extraction map, then try the local dataset
+        # -------------------------------------------------------------
+        # THE DIRECT LOOKUP CORRECTION: Force exact team-player alignment
+        # -------------------------------------------------------------
+        # 1. Check if the live API data managed to pull an exact name
         home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
-        if not home_pitcher:
-            home_pitcher = game.get('home_pitcher', f"{home} Hunter Greene") # Production seed fallback
-            
         star_batter = live_props_extracted.get(home, {}).get('batter')
+        
+        # 2. If live text is missing, verify the team is inside our Roster Vault
+        if not home_pitcher:
+            if home in ROSTER_VAULT:
+                home_pitcher = ROSTER_VAULT[home]["pitcher"]
+            else:
+                home_pitcher = f"{home} Starting Pitcher" # Absolute generic fallback
+                
         if not star_batter:
-            star_batter = game.get('star_batter', f"{home} Elly De La Cruz") # Production seed fallback
-            
-        # Clean up any residual generic placeholders
-        if "Starter" in home_pitcher or "Pitcher" in home_pitcher:
-            home_pitcher = "Hunter Greene"
-        if "Hitter" in star_batter or "Batter" in star_batter:
-            star_batter = "Elly De La Cruz"
+            if home in ROSTER_VAULT:
+                star_batter = ROSTER_VAULT[home]["batter"]
+            else:
+                star_batter = f"{home} Lead Hitter" # Absolute generic fallback
         
         # --- Evaluate Moneyline Market ---
         seed_ml = generate_stable_seed(home + "ml", 111)

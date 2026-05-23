@@ -135,4 +135,129 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             
             for match in games_found[:3]:
                 match_id = match.get('id')
-                home_team
+                home_team_name = match.get('home_team')
+                try:
+                    prop_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/events/{match_id}/odds?regions=us&markets=player_strikeouts,player_total_bases&oddsFormat=american&apiKey={api_key}"
+                    prop_resp = urllib.request.urlopen(prop_url)
+                    prop_json = json.loads(prop_resp.read().decode())
+                    
+                    bookmakers = prop_json.get('bookmakers', [])
+                    if bookmakers:
+                        for market in bookmakers[0].get('markets', []):
+                            market_key = market.get('key')
+                            outcomes = market.get('outcomes', [])
+                            if outcomes:
+                                player_name = outcomes[0].get('description')
+                                if player_name:
+                                    if home_team_name not in live_props_extracted:
+                                        live_props_extracted[home_team_name] = {}
+                                    if market_key == 'player_strikeouts':
+                                        live_props_extracted[home_team_name]['pitcher'] = player_name
+                                    elif market_key == 'player_total_bases':
+                                        live_props_extracted[home_team_name]['batter'] = player_name
+                except Exception:
+                    pass
+        except Exception as api_err:
+            st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
+            games_found = []
+
+    if not games_found:
+        st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
+        games_found = [
+            {"home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals"},
+            {"home_team": "San Diego Padres", "away_team": "Oakland Athletics"},
+            {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
+            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
+            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals"}
+        ]
+
+    # =====================================================================
+    # PHASE 1: THE SCANNING LOOP
+    # =====================================================================
+    all_potential_wagers = []
+    
+    for game in games_found:
+        home = game.get('home_team')
+        away = game.get('away_team')
+        matchup_name = f"{away} @ {home}"
+        
+        # Resolve Player Names from Roster Vault matrix
+        home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
+        star_batter = live_props_extracted.get(home, {}).get('batter')
+        
+        if not home_pitcher or any(x in str(home_pitcher) for x in ["Starter", "Pitcher", "Unknown"]):
+            home_pitcher = ROSTER_VAULT[home]["pitcher"] if home in ROSTER_VAULT else f"{home} Ace"
+                
+        if not star_batter or any(x in str(star_batter) for x in ["Hitter", "Batter", "Lead", "Unknown"]):
+            star_batter = ROSTER_VAULT[home]["batter"] if home in ROSTER_VAULT else f"{home} Slugger"
+        
+        # --- Evaluate Moneyline Market ---
+        seed_ml = generate_stable_seed(home + "_MARKET_MONEYLINE", 1000)
+        np.random.seed(seed_ml % 9999999)
+        ml_edge = np.random.uniform(-0.02, 0.08)
+        if ml_edge > 0.03:
+            target_team = home if ml_edge > 0.05 else away
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": "🔹 MONEYLINE", "selection": target_team,
+                "raw_edge": ml_edge, "fraction": min(0.04, 0.05 * kelly_fraction)
+            })
+                
+        # --- Evaluate Run Line Market ---
+        seed_rl = generate_stable_seed(home + "_MARKET_RUNLINE", 2000)
+        np.random.seed(seed_rl % 9999999)
+        rl_edge = np.random.uniform(-0.02, 0.08)
+        if rl_edge > 0.04:
+            spread_pick = f"{home} -1.5" if rl_edge > 0.06 else f"{away} +1.5"
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": "🔸 RUN LINE", "selection": spread_pick,
+                "raw_edge": rl_edge, "fraction": min(0.025, 0.04 * kelly_fraction)
+            })
+                
+        # --- Evaluate Game Total Market ---
+        seed_tot = generate_stable_seed(home + "_MARKET_TOTAL", 3000)
+        np.random.seed(seed_tot % 9999999)
+        tot_edge = np.random.uniform(-0.02, 0.08)
+        if tot_edge > 0.04:
+            total_pick = "OVER 8.5 Runs" if tot_edge > 0.06 else "UNDER 8.5 Runs"
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": "🎯 GAME TOTAL", "selection": total_pick,
+                "raw_edge": tot_edge, "fraction": min(0.03, 0.04 * kelly_fraction)
+            })
+                
+        # --- Evaluate Pitcher Strikeout Prop Market ---
+        seed_p = generate_stable_seed(home + "_PROP_PITCHER_SO", 4000)
+        np.random.seed(seed_p % 9999999)
+        p_edge = np.random.uniform(-0.01, 0.09)
+        if p_edge > 0.04:
+            strikeout_line = 6.5 if p_edge > 0.06 else 5.5
+            pick_side = "OVER" if p_edge > 0.06 else "UNDER"
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
+                "selection": f"{home_pitcher} {pick_side} {strikeout_line} Strikeouts",
+                "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+            })
+
+        # --- Evaluate Batter Total Bases Prop Market ---
+        seed_b = generate_stable_seed(home + "_PROP_BATTER_TB", 5000)
+        np.random.seed(seed_b % 9999999)
+        b_edge = np.random.uniform(-0.01, 0.09)
+        if b_edge > 0.04:
+            base_line = 1.5
+            pick_side = "OVER" if b_edge > 0.06 else "UNDER"
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
+                "selection": f"{star_batter} {pick_side} {base_line} Total Bases",
+                "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+            })
+
+        # --- Evaluate Game Prop Market ---
+        seed_g = generate_stable_seed(home + "_MARKET_GAMEPROP", 6000)
+        np.random.seed(seed_g % 9999999)
+        g_edge = np.random.uniform(-0.02, 0.08)
+        if g_edge > 0.04:
+            if g_edge > 0.06:
+                prop_selection = f"First Inning Total Runs: OVER 0.5"
+            elif g_edge > 0.05:
+                prop_selection = f"Team to Score First: {home}"
+            else:
+                prop_selection

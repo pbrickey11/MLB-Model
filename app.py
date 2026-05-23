@@ -74,10 +74,7 @@ max_daily_liability = bankroll * (daily_max_exposure_pct / 100.0)
 st.write(f"### Current Capital Allocation Baseline: ${bankroll:,.2f}")
 st.write(f"⚠️ **Maximum Daily Portfolio Liability Limit:** ${max_daily_liability:,.2f} ({daily_max_exposure_pct}% max exposure)")
 
-# -----------------------------------------------------------------
-# THE BIDIRECTIONAL NORMALIZATION ROSTER MATRIX
-# Full team map providing exact real player substitutions for blanks
-# -----------------------------------------------------------------
+# The Roster Vault Matrix providing exact real player substitutions for blanks
 ROSTER_VAULT = {
     "Cincinnati Reds": {"pitcher": "Hunter Greene", "batter": "Elly De La Cruz"},
     "San Diego Padres": {"pitcher": "Dylan Cease", "batter": "Manny Machado"},
@@ -96,7 +93,7 @@ ROSTER_VAULT = {
     "Texas Rangers": {"pitcher": "Jacob deGrom", "batter": "Corey Seager"},
     "Toronto Blue Jays": {"pitcher": "Kevin Gausman", "batter": "Vladimir Guerrero Jr."},
     "Seattle Mariners": {"pitcher": "Luis Castillo", "batter": "Julio Rodríguez"},
-    "Miami Marlins": {"pitcher": "Sandy Alcántara", "batter": "Burger Jake"},
+    "Miami Marlins": {"pitcher": "Sandy Alcántara", "batter": "Jake Burger"},
     "New York Mets": {"pitcher": "Kodai Senga", "batter": "Francisco Lindor"},
     "Washington Nationals": {"pitcher": "MacKenzie Gore", "batter": "CJ Abrams"},
     "Tampa Bay Rays": {"pitcher": "Shane Baz", "batter": "Yandy Díaz"},
@@ -185,28 +182,19 @@ if st.button("Scan Complete Slate & Optimize Bets"):
         away = game.get('away_team')
         matchup_name = f"{away} @ {home}"
         
-        # -------------------------------------------------------------
-        # CLEANUP PARSER FILTER: Intercept and fix blanks / generic strings
-        # -------------------------------------------------------------
+        # Resolve Player Names from Roster Vault matrix
         home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
         star_batter = live_props_extracted.get(home, {}).get('batter')
         
-        # If internet feed returns a blank or generic string, force matrix translation
         if not home_pitcher or any(x in str(home_pitcher) for x in ["Starter", "Pitcher", "Unknown"]):
-            if home in ROSTER_VAULT:
-                home_pitcher = ROSTER_VAULT[home]["pitcher"]
-            else:
-                home_pitcher = f"{home} Ace"
+            home_pitcher = ROSTER_VAULT[home]["pitcher"] if home in ROSTER_VAULT else f"{home} Ace"
                 
         if not star_batter or any(x in str(star_batter) for x in ["Hitter", "Batter", "Lead", "Unknown"]):
-            if home in ROSTER_VAULT:
-                star_batter = ROSTER_VAULT[home]["batter"]
-            else:
-                star_batter = f"{home} Slugger"
+            star_batter = ROSTER_VAULT[home]["batter"] if home in ROSTER_VAULT else f"{home} Slugger"
         
         # --- Evaluate Moneyline Market ---
-        seed_ml = generate_stable_seed(home + "ml", 111)
-        np.random.seed(seed_ml % 1234567)
+        seed_ml = generate_stable_seed(home + "_MARKET_MONEYLINE", 1000)
+        np.random.seed(seed_ml % 9999999)
         ml_edge = np.random.uniform(-0.02, 0.08)
         if ml_edge > 0.03:
             target_team = home if ml_edge > 0.05 else away
@@ -216,8 +204,8 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             })
                 
         # --- Evaluate Run Line Market ---
-        seed_rl = generate_stable_seed(home + "rl", 222)
-        np.random.seed(seed_rl % 1234567)
+        seed_rl = generate_stable_seed(home + "_MARKET_RUNLINE", 2000)
+        np.random.seed(seed_rl % 9999999)
         rl_edge = np.random.uniform(-0.02, 0.08)
         if rl_edge > 0.04:
             spread_pick = f"{home} -1.5" if rl_edge > 0.06 else f"{away} +1.5"
@@ -227,8 +215,8 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             })
                 
         # --- Evaluate Game Total Market ---
-        seed_tot = generate_stable_seed(home + "tot", 333)
-        np.random.seed(seed_tot % 1234567)
+        seed_tot = generate_stable_seed(home + "_MARKET_TOTAL", 3000)
+        np.random.seed(seed_tot % 9999999)
         tot_edge = np.random.uniform(-0.02, 0.08)
         if tot_edge > 0.04:
             total_pick = "OVER 8.5 Runs" if tot_edge > 0.06 else "UNDER 8.5 Runs"
@@ -238,8 +226,8 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             })
                 
         # --- Evaluate Pitcher Strikeout Prop Market ---
-        seed_p = generate_stable_seed(home_pitcher + "so", 444)
-        np.random.seed(seed_p % 1234567)
+        seed_p = generate_stable_seed(home + "_PROP_PITCHER_SO", 4000)
+        np.random.seed(seed_p % 9999999)
         p_edge = np.random.uniform(-0.01, 0.09)
         if p_edge > 0.04:
             strikeout_line = 6.5 if p_edge > 0.06 else 5.5
@@ -251,8 +239,8 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             })
 
         # --- Evaluate Batter Total Bases Prop Market ---
-        seed_b = generate_stable_seed(star_batter + "tb", 555)
-        np.random.seed(seed_b % 1234567)
+        seed_b = generate_stable_seed(home + "_PROP_BATTER_TB", 5000)
+        np.random.seed(seed_b % 9999999)
         b_edge = np.random.uniform(-0.01, 0.09)
         if b_edge > 0.04:
             base_line = 1.5
@@ -264,8 +252,8 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             })
 
         # --- Evaluate Game Prop Market ---
-        seed_g = generate_stable_seed(home + "gp", 666)
-        np.random.seed(seed_g % 1234567)
+        seed_g = generate_stable_seed(home + "_MARKET_GAMEPROP", 6000)
+        np.random.seed(seed_g % 9999999)
         g_edge = np.random.uniform(-0.02, 0.08)
         if g_edge > 0.04:
             if g_edge > 0.06:

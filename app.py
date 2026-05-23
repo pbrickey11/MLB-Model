@@ -154,3 +154,25 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                             outcomes = market.get('outcomes', [])
                             if outcomes:
                                 player_name = outcomes[0].get('description')
+                                if player_name:
+                                    if home_team_name not in live_props_extracted:
+                                        live_props_extracted[home_team_name] = {}
+                                    if market_key == 'player_strikeouts':
+                                        live_props_extracted[home_team_name]['pitcher'] = player_name
+                                    elif market_key == 'player_total_bases':
+                                        live_props_extracted[home_team_name]['batter'] = player_name
+                except Exception:
+                    pass
+                    
+        except Exception as api_err:
+            st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
+            games_found = []
+
+    if not games_found:
+        st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
+        games_found = [
+            {"home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals"},
+            {"home_team": "San Diego Padres", "away_team": "Oakland Athletics"},
+            {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
+            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
+            {"

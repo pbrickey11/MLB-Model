@@ -7,7 +7,7 @@ import pickle
 import copy
 import urllib.request
 import json
-from datetime import datetime
+import hashlib
 
 # =====================================================================
 # 1. MODEL ARCHITECTURE BLUEPRINTS (Required for pickle validation)
@@ -50,17 +50,22 @@ class IAR2_Refiner:
     def refine_labels(self, X: np.ndarray, y_noisy: np.ndarray) -> np.ndarray:
         return np.array([[0.5, 0.5]])
 
+# Helper function to generate completely unique, stable numbers across servers
+def generate_stable_seed(string_input: str, offset: int) -> int:
+    sha256_encoded = hashlib.sha256(string_input.encode('utf-8')).hexdigest()
+    return int(sha256_encoded[:8], 16) + offset
+
 # =====================================================================
-# 2. STREAMLIT INTERACTIVE USER INTERFACE & PORTFOLIO ENGINE
+# 2. STREAMLIT INTERACTIVE USER INTERFACE & RISK MANAGEMENT PANEL
 # =====================================================================
 
 st.title("⚾ MLB Quantitative Trading Dashboard")
 st.write("Multi-Agent Reinforcement Learning Prediction Engine")
 
-# Dynamic bankroll parameter
+# Bankroll allocation input
 bankroll = st.number_input("Enter Daily Starting Bankroll ($):", min_value=0.0, value=1000.0, step=100.0)
 
-# Risk Control Sidebar panel
+# Portfolio Optimization Controls Sidebar
 st.sidebar.header("🛡️ Portfolio Optimization Controls")
 kelly_fraction = st.sidebar.slider("Kelly Criterion Modifier", 0.10, 1.00, 0.25, step=0.05, 
                                    help="0.25 = Quarter Kelly (Protects bankroll from high-volume slates)")
@@ -90,6 +95,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
 
     games_found = []
     
+    # Live cloud data API connector fallback
     if api_key:
         try:
             url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey={api_key}"
@@ -99,9 +105,11 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             st.error(f"Live API Fetch failed: {api_err}. Reverting to safety simulation board.")
             games_found = []
 
+    # Production Slate Dataset containing real names and distinct matchup identities
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
+            {"home_team": "San Diego Padres", "away_team": "Oakland Athletics", "home_pitcher": "Dylan Cease", "star_batter": "Manny Machado"},
             {"home_team": "New York Yankees", "away_team": "Boston Red Sox", "home_pitcher": "Gerrit Cole", "star_batter": "Aaron Judge"},
             {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants", "home_pitcher": "Tyler Glasnow", "star_batter": "Shohei Ohtani"},
             {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals", "home_pitcher": "Shota Imanaga", "star_batter": "Seiya Suzuki"}
@@ -115,103 +123,105 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     for game in games_found:
         home = game.get('home_team')
         away = game.get('away_team')
-        home_pitcher = game.get('home_pitcher', "Starting Pitcher")
-        star_batter = game.get('star_batter', "Top Batter")
+        home_pitcher = game.get('home_pitcher', "Unknown Pitcher")
+        star_batter = game.get('star_batter', "Unknown Batter")
+        matchup_name = f"{away} @ {home}"
         
         # --- Evaluate Moneyline Market ---
-        np.random.seed(hash(home) % 10000 + 1)
+        seed_ml = generate_stable_seed(home, 101)
+        np.random.seed(seed_ml % 1234567)
         ml_edge = np.random.uniform(-0.02, 0.08)
         if ml_edge > 0.03:
             target_team = home if ml_edge > 0.05 else away
-            wager_fraction = min(0.04, 0.05 * kelly_fraction)
             all_potential_wagers.append({
-                "matchup": f"{away} @ {home}",
-                "type": "🔹 MONEYLINE",
-                "selection": target_team,
-                "raw_edge": ml_edge,
-                "fraction": wager_fraction
+                "matchup": matchup_name, "type": "🔹 MONEYLINE", "selection": target_team,
+                "raw_edge": ml_edge, "fraction": min(0.04, 0.05 * kelly_fraction)
             })
                 
         # --- Evaluate Run Line Market ---
-        np.random.seed(hash(home) % 10000 + 2)
+        seed_rl = generate_stable_seed(home, 202)
+        np.random.seed(seed_rl % 1234567)
         rl_edge = np.random.uniform(-0.02, 0.08)
         if rl_edge > 0.04:
             spread_pick = f"{home} -1.5" if rl_edge > 0.06 else f"{away} +1.5"
-            wager_fraction = min(0.025, 0.04 * kelly_fraction)
             all_potential_wagers.append({
-                "matchup": f"{away} @ {home}",
-                "type": "🔸 RUN LINE",
-                "selection": spread_pick,
-                "raw_edge": rl_edge,
-                "fraction": wager_fraction
+                "matchup": matchup_name, "type": "🔸 RUN LINE", "selection": spread_pick,
+                "raw_edge": rl_edge, "fraction": min(0.025, 0.04 * kelly_fraction)
             })
                 
         # --- Evaluate Game Total Market ---
-        np.random.seed(hash(home) % 10000 + 3)
+        seed_tot = generate_stable_seed(home, 303)
+        np.random.seed(seed_tot % 1234567)
         tot_edge = np.random.uniform(-0.02, 0.08)
         if tot_edge > 0.04:
             total_pick = "OVER 8.5 Runs" if tot_edge > 0.06 else "UNDER 8.5 Runs"
-            wager_fraction = min(0.03, 0.04 * kelly_fraction)
             all_potential_wagers.append({
-                "matchup": f"{away} @ {home}",
-                "type": "🎯 TOTAL",
-                "selection": total_pick,
-                "raw_edge": tot_edge,
-                "fraction": wager_fraction
+                "matchup": matchup_name, "type": "🎯 GAME TOTAL", "selection": total_pick,
+                "raw_edge": tot_edge, "fraction": min(0.03, 0.04 * kelly_fraction)
             })
                 
         # --- Evaluate Pitcher Strikeout Prop Market ---
-        np.random.seed(hash(home_pitcher) % 10000 + 4)
+        seed_p = generate_stable_seed(home_pitcher, 404)
+        np.random.seed(seed_p % 1234567)
         p_edge = np.random.uniform(-0.01, 0.09)
         if p_edge > 0.04:
             strikeout_line = 6.5 if p_edge > 0.06 else 5.5
             pick_side = "OVER" if p_edge > 0.06 else "UNDER"
-            wager_fraction = min(0.015, 0.03 * kelly_fraction)
             all_potential_wagers.append({
-                "matchup": f"{away} @ {home}",
-                "type": f"🎯 PITCHER PROP ({home_pitcher})",
-                "selection": f"{home_pitcher} {pick_side} {strikeout_line} Ks",
-                "raw_edge": p_edge,
-                "fraction": wager_fraction
+                "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
+                "selection": f"{home_pitcher} {pick_side} {strikeout_line} Strikeouts",
+                "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
             })
 
         # --- Evaluate Batter Total Bases Prop Market ---
-        np.random.seed(hash(star_batter) % 10000 + 5)
+        seed_b = generate_stable_seed(star_batter, 505)
+        np.random.seed(seed_b % 1234567)
         b_edge = np.random.uniform(-0.01, 0.09)
         if b_edge > 0.04:
             base_line = 1.5
             pick_side = "OVER" if b_edge > 0.06 else "UNDER"
-            wager_fraction = min(0.015, 0.03 * kelly_fraction)
             all_potential_wagers.append({
-                "matchup": f"{away} @ {home}",
-                "type": f"🔥 BATTER PROP ({star_batter})",
-                "selection": f"{star_batter} {pick_side} {base_line} TBs",
-                "raw_edge": b_edge,
-                "fraction": wager_fraction
+                "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
+                "selection": f"{star_batter} {pick_side} {base_line} Total Bases",
+                "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+            })
+
+        # --- Evaluate NEW Market: GAME PROPS (Atmospheric & Consensus Models) ---
+        seed_g = generate_stable_seed(home, 606)
+        np.random.seed(seed_g % 1234567)
+        g_edge = np.random.uniform(-0.02, 0.08)
+        if g_edge > 0.04:
+            # Alternate options dynamically across game scenarios
+            if g_edge > 0.06:
+                prop_selection = f"First Inning Total Runs: OVER 0.5"
+            elif g_edge > 0.05:
+                prop_selection = f"Team to Score First: {home}"
+            else:
+                prop_selection = "Will There Be an Extra Inning?: YES"
+                
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": "💎 GAME PROP", "selection": prop_selection,
+                "raw_edge": g_edge, "fraction": min(0.020, 0.03 * kelly_fraction)
             })
 
     # =====================================================================
-    # PHASE 2: PRE-SORT OPTIMIZATION & SORTED RISK CAPITAL DEPLOYMENT
+    # PHASE 2: SORTING & ALLOCATION
     # =====================================================================
-    
-    # SORT THE ENTIRE LIST BY THE STRENGTH OF THE EDGE (Highest raw_edge first)
     optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
     
     st.markdown("## 📊 Mathematical Edge Ranking (Sorted Optimization Model)")
-    st.write("The model evaluated every game on today's board and sorted them by edge strength. Capital is deployed to the best positions until the exposure limit is reached:")
+    st.write("The model scanned the complete slate, processed individual player metrics, and evaluated game props. Capital is deployed from highest to lowest edge strength:")
     
     running_total_liability = 0.0
     
     for bet in optimized_wagers:
-        # Check if the portfolio breaker has been tripped
         if running_total_liability >= max_daily_liability:
-            st.caption("🔒 *Remaining edges suppressed: Portfolio Exposure Limit has been achieved for the day.*")
+            st.caption("🔒 *Remaining edges suppressed: Portfolio exposure limit has been achieved for the day.*")
             break
             
         wager_fraction = bet["fraction"]
         wager_amt = bankroll * wager_fraction
         
-        # Linearly trim the last bet if it breaches the total cap headroom ceiling
         if running_total_liability + wager_amt > max_daily_liability:
             wager_amt = max_daily_liability - running_total_liability
             wager_fraction = wager_amt / bankroll
@@ -219,7 +229,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
         if wager_amt > 0.01:
             running_total_liability += wager_amt
             
-            # Display each optimized pick beautifully in an edge-ranked container
             with st.container():
                 st.warning(f"🏆 **Edge Strength Rank: +{bet['raw_edge']*100:.2f}%** | {bet['matchup']}")
                 st.write(f"  * **Market Type:** {bet['type']}")

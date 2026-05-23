@@ -94,14 +94,14 @@ if "cached_optimized_wagers" not in st.session_state:
 # The Roster Vault Matrix providing exact real player substitutions for blanks
 ROSTER_VAULT = {
     "Cincinnati Reds": {"pitcher": "Hunter Greene", "batter": "Elly De La Cruz"},
-    "San Diego Padres": {"pitcher": "Dylan Cease", "batter": "Manny Machado"},
+    "San Diego Padres": {"pitcher": "Lucas Giolito", "batter": "Manny Machado"}, # ALIGNED TO PADRES VAULT
     "New York Yankees": {"pitcher": "Gerrit Cole", "batter": "Aaron Judge"},
     "Los Angeles Dodgers": {"pitcher": "Tyler Glasnow", "batter": "Shohei Ohtani"},
     "Chicago Cubs": {"pitcher": "Shota Imanaga", "batter": "Seiya Suzuki"},
     "Baltimore Orioles": {"pitcher": "Corbin Burnes", "batter": "Gunnar Henderson"},
     "Oakland Athletics": {"pitcher": "JP Sears", "batter": "Brent Rooker"},
-    "Boston Red Sox": {"pitcher": "Lucas Giolito", "batter": "Rafael Devers"},
-    "San Francisco Giants": {"pitcher": "Logan Webb", "batter": "Matt Chapman"}, # KEY FIXED: Changed "matt Chapman" to "batter"
+    "Boston Red Sox": {"pitcher": "Kutter Crawford", "batter": "Rafael Devers"}, # ALIGNED TO RED SOX VAULT
+    "San Francisco Giants": {"pitcher": "Logan Webb", "batter": "Matt Chapman"},
     "St. Louis Cardinals": {"pitcher": "Sonny Gray", "batter": "Nolan Arenado"},
     "Cleveland Guardians": {"pitcher": "Tanner Bibee", "batter": "José Ramírez"},
     "Houston Astros": {"pitcher": "Framber Valdez", "batter": "Yordan Alvarez"},

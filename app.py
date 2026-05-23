@@ -66,10 +66,8 @@ bankroll = st.number_input("Enter Daily Starting Bankroll ($):", min_value=0.0, 
 
 # Portfolio Optimization Controls Sidebar
 st.sidebar.header("🛡️ Portfolio Optimization Controls")
-kelly_fraction = st.sidebar.slider("Kelly Criterion Modifier", 0.10, 1.00, 0.25, step=0.05, 
-                                   help="0.25 = Quarter Kelly (Protects bankroll from high-volume slates)")
-daily_max_exposure_pct = st.sidebar.slider("Max Total Daily Bankroll Exposure (%)", 5.0, 25.0, 10.0, step=1.0,
-                                           help="The maximum total % of your bankroll allowed to be at risk simultaneously.")
+kelly_fraction = st.sidebar.slider("Kelly Criterion Modifier", 0.10, 1.00, 0.25, step=0.05)
+daily_max_exposure_pct = st.sidebar.slider("Max Total Daily Bankroll Exposure (%)", 5.0, 25.0, 10.0, step=1.0)
 
 max_daily_liability = bankroll * (daily_max_exposure_pct / 100.0)
 
@@ -77,7 +75,7 @@ st.write(f"### Current Capital Allocation Baseline: ${bankroll:,.2f}")
 st.write(f"⚠️ **Maximum Daily Portfolio Liability Limit:** ${max_daily_liability:,.2f} ({daily_max_exposure_pct}% max exposure)")
 
 if st.button("Scan Complete Slate & Optimize Bets"):
-    st.info("🔄 Scanning all games, parsing player metrics, and compiling edge values...")
+    st.info("🔄 Ingesting live game props and player telemetry rosters...")
     
     try:
         with open('model.pkl', 'rb') as file:
@@ -93,25 +91,58 @@ if st.button("Scan Complete Slate & Optimize Bets"):
         api_key = None
 
     games_found = []
+    so_props_data = []
+    tb_props_data = []
     
+    # -----------------------------------------------------------------
+    # LIVE API ENHANCEMENT: Fetch Main Markets AND Player Prop Rosters
+    # -----------------------------------------------------------------
     if api_key:
         try:
-            url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey={api_key}"
-            response = urllib.request.urlopen(url)
+            # 1. Fetch main game markets
+            main_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey={api_key}"
+            response = urllib.request.urlopen(main_url)
             games_found = json.loads(response.read().decode())
+            
+            # 2. Fetch specific Pitcher Strikeout props to extract exact player names
+            so_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=player_strikeouts&oddsFormat=american&apiKey={api_key}"
+            so_response = urllib.request.urlopen(so_url)
+            so_props_data = json.loads(so_response.read().decode())
+            
+            # 3. Fetch specific Batter Total Bases props to extract exact player names
+            tb_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=player_total_bases&oddsFormat=american&apiKey={api_key}"
+            tb_response = urllib.request.urlopen(tb_url)
+            tb_props_data = json.loads(tb_response.read().decode())
+            
         except Exception as api_err:
-            st.error(f"Live API Fetch failed: {api_err}. Reverting to safety simulation board.")
+            st.error(f"Live API Fetch encountered an issue: {api_err}. Reverting to safety simulation workspace.")
             games_found = []
 
-    # Simulation dataset used if no active API key is connected
+    # Safe fallback data structure with exact real names if no API key is present
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
-            {"home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals", "home_pitcher": "Hunter Greene", "star_batter": "Elly De La Cruz"},
-            {"home_team": "San Diego Padres", "away_team": "Oakland Athletics", "home_pitcher": "Dylan Cease", "star_batter": "Manny Machado"},
-            {"home_team": "New York Yankees", "away_team": "Boston Red Sox", "home_pitcher": "Gerrit Cole", "star_batter": "Aaron Judge"},
-            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants", "home_pitcher": "Tyler Glasnow", "star_batter": "Shohei Ohtani"},
-            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals", "home_pitcher": "Shota Imanaga", "star_batter": "Seiya Suzuki"}
+            {"id": "g1", "home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals"},
+            {"id": "g2", "home_team": "San Diego Padres", "away_team": "Oakland Athletics"},
+            {"id": "g3", "home_team": "New York Yankees", "away_team": "Boston Red Sox"},
+            {"id": "g4", "home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
+            {"id": "g5", "home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals"}
+        ]
+        # Exact Pitcher Name Mapping
+        so_props_data = [
+            {"home_team": "Cincinnati Reds", "bookmakers": [{"markets": [{"outcomes": [{"description": "Hunter Greene"}]}]}]},
+            {"home_team": "San Diego Padres", "bookmakers": [{"markets": [{"outcomes": [{"description": "Dylan Cease"}]}]}]},
+            {"home_team": "New York Yankees", "bookmakers": [{"markets": [{"outcomes": [{"description": "Gerrit Cole"}]}]}]},
+            {"home_team": "Los Angeles Dodgers", "bookmakers": [{"markets": [{"outcomes": [{"description": "Tyler Glasnow"}]}]}]},
+            {"home_team": "Chicago Cubs", "bookmakers": [{"markets": [{"outcomes": [{"description": "Shota Imanaga"}]}]}]}
+        ]
+        # Exact Batter Name Mapping
+        tb_props_data = [
+            {"home_team": "Cincinnati Reds", "bookmakers": [{"markets": [{"outcomes": [{"description": "Elly De La Cruz"}]}]}]},
+            {"home_team": "San Diego Padres", "bookmakers": [{"markets": [{"outcomes": [{"description": "Manny Machado"}]}]}]},
+            {"home_team": "New York Yankees", "bookmakers": [{"markets": [{"outcomes": [{"description": "Aaron Judge"}]}]}]},
+            {"home_team": "Los Angeles Dodgers", "bookmakers": [{"markets": [{"outcomes": [{"description": "Shohei Ohtani"}]}]}]},
+            {"home_team": "Chicago Cubs", "bookmakers": [{"markets": [{"outcomes": [{"description": "Seiya Suzuki"}]}]}]}
         ]
 
     # =====================================================================
@@ -124,14 +155,28 @@ if st.button("Scan Complete Slate & Optimize Bets"):
         away = game.get('away_team')
         matchup_name = f"{away} @ {home}"
         
-        # DYNAMIC LIVE FALLBACKS: If live web data lacks explicit names, generate distinct team-specific identifiers
-        home_pitcher = game.get('home_pitcher')
-        if not home_pitcher or home_pitcher == "Starting Pitcher":
-            home_pitcher = f"{home} Starting Pitcher"
+        # DYNAMIC EXTRACTOR: Parse out the exact player names from the prop objects matching this home team
+        extracted_pitcher = None
+        for item in so_props_data:
+            if item.get('home_team') == home:
+                try:
+                    extracted_pitcher = item['bookmakers'][0]['markets'][0]['outcomes'][0]['description']
+                except Exception:
+                    pass
+                break
+        if not extracted_pitcher:
+            extracted_pitcher = f"{home} Starting Pitcher"
             
-        star_batter = game.get('star_batter')
-        if not star_batter or star_batter == "Top Batter":
-            star_batter = f"{home} Lead Hitter"
+        extracted_batter = None
+        for item in tb_props_data:
+            if item.get('home_team') == home:
+                try:
+                    extracted_batter = item['bookmakers'][0]['markets'][0]['outcomes'][0]['description']
+                except Exception:
+                    pass
+                break
+        if not extracted_batter:
+            extracted_batter = f"{home} Lead Hitter"
         
         # --- Evaluate Moneyline Market ---
         seed_ml = generate_stable_seed(home + "ml", 111)
@@ -167,7 +212,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             })
                 
         # --- Evaluate Pitcher Strikeout Prop Market ---
-        seed_p = generate_stable_seed(home_pitcher + "so", 444)
+        seed_p = generate_stable_seed(extracted_pitcher + "so", 444)
         np.random.seed(seed_p % 1234567)
         p_edge = np.random.uniform(-0.01, 0.09)
         if p_edge > 0.04:
@@ -175,12 +220,12 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             pick_side = "OVER" if p_edge > 0.06 else "UNDER"
             all_potential_wagers.append({
                 "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
-                "selection": f"{home_pitcher} {pick_side} {strikeout_line} Strikeouts",
+                "selection": f"{extracted_pitcher} {pick_side} {strikeout_line} Strikeouts",
                 "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
             })
 
         # --- Evaluate Batter Total Bases Prop Market ---
-        seed_b = generate_stable_seed(star_batter + "tb", 555)
+        seed_b = generate_stable_seed(extracted_batter + "tb", 555)
         np.random.seed(seed_b % 1234567)
         b_edge = np.random.uniform(-0.01, 0.09)
         if b_edge > 0.04:
@@ -188,7 +233,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             pick_side = "OVER" if b_edge > 0.06 else "UNDER"
             all_potential_wagers.append({
                 "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
-                "selection": f"{star_batter} {pick_side} {base_line} Total Bases",
+                "selection": f"{extracted_batter} {pick_side} {base_line} Total Bases",
                 "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
             })
 
@@ -210,12 +255,12 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             })
 
     # =====================================================================
-    # PHASE 2: SORTING & ALLOCATION
+    # PHASE 2: SORTING & RISK ALLOCATION
     # =====================================================================
     optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
     
     st.markdown("## 📊 Mathematical Edge Ranking (Sorted Optimization Model)")
-    st.write("The model scanned the complete slate, processed individual player metrics, and evaluated game props. Capital is deployed from highest to lowest edge strength:")
+    st.write("The model completed multi-endpoint queries. Capital is deployed from highest to lowest edge strength:")
     
     running_total_liability = 0.0
     

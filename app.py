@@ -129,7 +129,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     
     if api_key:
         try:
-            schedule_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h&apiKey={api_key}"
+            schedule_url = f"https://api.the-odds-api.com v4/sports/baseball_mlb/odds?regions=us&markets=h2h&apiKey={api_key}"
             response = urllib.request.urlopen(schedule_url)
             games_found = json.loads(response.read().decode())
             
@@ -162,6 +162,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
             games_found = []
 
+    # CLEAN SIMULATION SLATE: Every single matchup is distinct and carries unique teams
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
@@ -169,7 +170,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             {"home_team": "San Diego Padres", "away_team": "Oakland Athletics"},
             {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
             {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
-            {"home_team": "Chicago Cubs", "away_team": "St. Louis Cardinals"}
+            {"home_team": "Chicago Cubs", "away_team": "Milwaukee Brewers"}
         ]
 
     # =====================================================================
@@ -182,7 +183,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
         away = game.get('away_team')
         matchup_name = f"{away} @ {home}"
         
-        # Resolve Player Names from Roster Vault matrix
+        # Resolve Player Names dynamically without borrowing global text strings
         home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
         star_batter = live_props_extracted.get(home, {}).get('batter')
         
@@ -278,7 +279,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     
     running_total_liability = 0.0
     
-    # Enumeration guarantees every unique loop iteration gets its own separate UI container ID
     for idx, bet in enumerate(optimized_wagers):
         if running_total_liability >= max_daily_liability:
             st.caption("🔒 *Remaining edges suppressed: Portfolio exposure limit has been achieved for the day.*")

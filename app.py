@@ -129,7 +129,8 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     
     if api_key:
         try:
-            schedule_url = f"https://api.the-odds-api.com v4/sports/baseball_mlb/odds?regions=us&markets=h2h&apiKey={api_key}"
+            # FIX APPLIED: Changed the trailing space to a proper forward slash right before 'v4'
+            schedule_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds?regions=us&markets=h2h&apiKey={api_key}"
             response = urllib.request.urlopen(schedule_url)
             games_found = json.loads(response.read().decode())
             
@@ -162,7 +163,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
             games_found = []
 
-    # CLEAN SIMULATION SLATE: Every single matchup is distinct and carries unique teams
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
@@ -183,7 +183,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
         away = game.get('away_team')
         matchup_name = f"{away} @ {home}"
         
-        # Resolve Player Names dynamically without borrowing global text strings
+        # Resolve Player Names from Roster Vault matrix
         home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
         star_batter = live_props_extracted.get(home, {}).get('batter')
         

@@ -101,7 +101,7 @@ ROSTER_VAULT = {
     "Baltimore Orioles": {"pitcher": "Corbin Burnes", "batter": "Gunnar Henderson"},
     "Oakland Athletics": {"pitcher": "JP Sears", "batter": "Brent Rooker"},
     "Boston Red Sox": {"pitcher": "Lucas Giolito", "batter": "Rafael Devers"},
-    "San Francisco Giants": {"pitcher": "Logan Webb", "matt Chapman": "Matt Chapman"},
+    "San Francisco Giants": {"pitcher": "Logan Webb", "batter": "Matt Chapman"}, # KEY FIXED: Changed "matt Chapman" to "batter"
     "St. Louis Cardinals": {"pitcher": "Sonny Gray", "batter": "Nolan Arenado"},
     "Cleveland Guardians": {"pitcher": "Tanner Bibee", "batter": "José Ramírez"},
     "Houston Astros": {"pitcher": "Framber Valdez", "batter": "Yordan Alvarez"},

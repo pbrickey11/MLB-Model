@@ -144,4 +144,60 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                 home_team_name = match.get('home_team')
                 try:
                     prop_url = f"https://api.the-odds-api.com/v4/sports/baseball_mlb/events/{match_id}/odds?regions=us&markets=player_strikeouts,player_total_bases&oddsFormat=american&apiKey={api_key}"
-                    prop_resp = urllib.request
+                    prop_resp = urllib.request.urlopen(prop_url)
+                    prop_json = json.loads(prop_resp.read().decode())
+                    
+                    bookmakers = prop_json.get('bookmakers', [])
+                    if bookmakers:
+                        for market in bookmakers[0].get('markets', []):
+                            market_key = market.get('key')
+                            outcomes = market.get('outcomes', [])
+                            if outcomes:
+                                player_name = outcomes[0].get('description')
+                                if player_name:
+                                    if home_team_name not in live_props_extracted:
+                                        live_props_extracted[home_team_name] = {}
+                                    if market_key == 'player_strikeouts':
+                                        live_props_extracted[home_team_name]['pitcher'] = player_name
+                                    elif market_key == 'player_total_bases':
+                                        live_props_extracted[home_team_name]['batter'] = player_name
+                except Exception:
+                    pass
+                    
+        except Exception as api_err:
+            st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
+            games_found = []
+
+    if not games_found:
+        st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
+        games_found = [
+            {"home_team": "Cincinnati Reds", "away_team": "St. Louis Cardinals"},
+            {"home_team": "San Diego Padres", "away_team": "Oakland Athletics"},
+            {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
+            {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"},
+            {"home_team": "Milwaukee Brewers", "away_team": "Chicago Cubs"}
+        ]
+
+    # =====================================================================
+    # PHASE 1: THE SCANNING LOOP
+    # =====================================================================
+    all_potential_wagers = []
+    already_scanned_player_props = set()
+    
+    for game in games_found:
+        home = game.get('home_team')
+        away = game.get('away_team')
+        matchup_name = f"{away} @ {home}"
+        
+        # Resolve Player Names from Roster Vault matrix
+        home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
+        star_batter = live_props_extracted.get(home, {}).get('batter')
+        
+        if not home_pitcher or any(x in str(home_pitcher) for x in ["Starter", "Pitcher", "Unknown"]):
+            home_pitcher = ROSTER_VAULT[home]["pitcher"] if home in ROSTER_VAULT else f"{home} Ace"
+                
+        if not star_batter or any(x in str(star_batter) for x in ["Hitter", "Batter", "Lead", "Unknown"]):
+            star_batter = ROSTER_VAULT[home]["batter"] if home in ROSTER_VAULT else f"{home} Slugger"
+        
+        # --- Evaluate Moneyline Market ---
+        seed_ml = generate_stable

@@ -74,6 +74,40 @@ max_daily_liability = bankroll * (daily_max_exposure_pct / 100.0)
 st.write(f"### Current Capital Allocation Baseline: ${bankroll:,.2f}")
 st.write(f"⚠️ **Maximum Daily Portfolio Liability Limit:** ${max_daily_liability:,.2f} ({daily_max_exposure_pct}% max exposure)")
 
+# HYBRID COMPONENT: Master Roster Vault providing precise fallbacks if live prop boards are currently unposted
+ROSTER_VAULT = {
+    "Cincinnati Reds": {"pitcher": "Hunter Greene", "batter": "Elly De La Cruz"},
+    "San Diego Padres": {"pitcher": "Dylan Cease", "batter": "Manny Machado"},
+    "New York Yankees": {"pitcher": "Gerrit Cole", "batter": "Aaron Judge"},
+    "Los Angeles Dodgers": {"pitcher": "Tyler Glasnow", "batter": "Shohei Ohtani"},
+    "Chicago Cubs": {"pitcher": "Shota Imanaga", "batter": "Seiya Suzuki"},
+    "Baltimore Orioles": {"pitcher": "Corbin Burnes", "batter": "Gunnar Henderson"},
+    "Oakland Athletics": {"pitcher": "JP Sears", "batter": "Brent Rooker"},
+    "Boston Red Sox": {"pitcher": "Lucas Giolito", "batter": "Rafael Devers"},
+    "San Francisco Giants": {"pitcher": "Logan Webb", "batter": "Matt Chapman"},
+    "St. Louis Cardinals": {"pitcher": "Sonny Gray", "batter": "Nolan Arenado"},
+    "Cleveland Guardians": {"pitcher": "Tanner Bibee", "batter": "José Ramírez"},
+    "Houston Astros": {"pitcher": "Framber Valdez", "batter": "Yordan Alvarez"},
+    "Atlanta Braves": {"pitcher": "Spencer Strider", "batter": "Ronald Acuña Jr."},
+    "Philadelphia Phillies": {"pitcher": "Zack Wheeler", "batter": "Bryce Harper"},
+    "Texas Rangers": {"pitcher": "Jacob deGrom", "batter": "Corey Seager"},
+    "Toronto Blue Jays": {"pitcher": "Kevin Gausman", "batter": "Vladimir Guerrero Jr."},
+    "Seattle Mariners": {"pitcher": "Luis Castillo", "batter": "Julio Rodríguez"},
+    "Miami Marlins": {"pitcher": "Sandy Alcántara", "batter": "Jake Burger"},
+    "New York Mets": {"pitcher": "Freddy Peralta", "batter": "Francisco Lindor"},
+    "Washington Nationals": {"pitcher": "MacKenzie Gore", "batter": "CJ Abrams"},
+    "Tampa Bay Rays": {"pitcher": "Shane Baz", "batter": "Yandy Díaz"},
+    "Chicago White Sox": {"pitcher": "Garrett Crochet", "batter": "Luis Robert Jr."},
+    "Detroit Tigers": {"pitcher": "Tarik Skubal", "batter": "Riley Greene"},
+    "Kansas City Royals": {"pitcher": "Cole Ragans", "batter": "Bobby Witt Jr."},
+    "Minnesota Twins": {"pitcher": "Pablo López", "batter": "Byron Buxton"},
+    "Colorado Rockies": {"pitcher": "Kyle Freeland", "batter": "Ezequiel Tovar"},
+    "Arizona Diamondbacks": {"pitcher": "Zac Gallen", "batter": "Corbin Carroll"},
+    "Los Angeles Angels": {"pitcher": "Patrick Sandoval", "batter": "Mike Trout"},
+    "Milwaukee Brewers": {"pitcher": "William Contreras", "batter": "Brice Turang"},
+    "Pittsburgh Pirates": {"pitcher": "Mitch Keller", "batter": "Oneil Cruz"}
+}
+
 if st.button("Scan Complete Slate & Optimize Bets"):
     st.info("🔄 Querying live endpoints and dynamically parsing active prop rosters...")
     
@@ -99,7 +133,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             response = urllib.request.urlopen(schedule_url)
             games_found = json.loads(response.read().decode())
             
-            # Query player prop books for specific event matches dynamically
             for match in games_found[:3]:
                 match_id = match.get('id')
                 home_team_name = match.get('home_team')
@@ -114,7 +147,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                             market_key = market.get('key')
                             outcomes = market.get('outcomes', [])
                             
-                            # DYNAMIC EXTRACTION LAYER: Collect all active listed athletes straight from the bookmaker payload
                             if home_team_name not in live_props_extracted:
                                 live_props_extracted[home_team_name] = {'pitchers': [], 'batters': []}
                                 
@@ -132,7 +164,6 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             st.error(f"Live API Fetch dropped: {api_err}. Reverting to simulation board.")
             games_found = []
 
-    # Safe simulation dataset structure
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
@@ -141,17 +172,12 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             {"home_team": "New York Yankees", "away_team": "Boston Red Sox"},
             {"home_team": "Los Angeles Dodgers", "away_team": "San Francisco Giants"}
         ]
-        live_props_extracted = {
-            "Cincinnati Reds": {"pitchers": ["Hunter Greene"], "batters": ["Elly De La Cruz"]},
-            "San Diego Padres": {"pitchers": ["Dylan Cease"], "batters": ["Manny Machado"]},
-            "New York Yankees": {"pitchers": ["Gerrit Cole"], "batters": ["Aaron Judge"]},
-            "Los Angeles Dodgers": {"pitchers": ["Tyler Glasnow"], "batters": ["Shohei Ohtani"]}
-        }
 
     # =====================================================================
     # PHASE 1: THE SCANNING LOOP
     # =====================================================================
     all_potential_wagers = []
+    already_scanned_player_props = set()
     
     for game in games_found:
         home = game.get('home_team')
@@ -191,82 +217,47 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                 "raw_edge": tot_edge, "fraction": min(0.03, 0.04 * kelly_fraction)
             })
 
-        # --- Evaluate ALL Live Extracted Pitchers dynamically ---
+        # -------------------------------------------------------------
+        # HYBRID PITCHER RESOLUTION FILTER
+        # -------------------------------------------------------------
         active_pitchers = live_props_extracted.get(home, {}).get('pitchers', [])
+        # If live API list is empty, draw from the fallback vault map immediately
+        if not active_pitchers and home in ROSTER_VAULT:
+            active_pitchers = [ROSTER_VAULT[home]["pitcher"]]
+            
         for pitcher_name in active_pitchers:
-            seed_p = generate_stable_seed(pitcher_name + "_SO_PROP", 4000)
-            np.random.seed(seed_p % 9999999)
-            p_edge = np.random.uniform(-0.01, 0.09)
-            if p_edge > 0.04:
-                strikeout_line = 6.5 if p_edge > 0.06 else 5.5
-                pick_side = "OVER" if p_edge > 0.06 else "UNDER"
-                all_potential_wagers.append({
-                    "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
-                    "selection": f"{pitcher_name} {pick_side} {strikeout_line} Strikeouts",
-                    "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
-                })
+            if pitcher_name not in already_scanned_player_props:
+                seed_p = generate_stable_seed(pitcher_name + "_SO_PROP", 4000)
+                np.random.seed(seed_p % 9999999)
+                p_edge = np.random.uniform(-0.01, 0.09)
+                if p_edge > 0.04:
+                    strikeout_line = 6.5 if p_edge > 0.06 else 5.5
+                    pick_side = "OVER" if p_edge > 0.06 else "UNDER"
+                    all_potential_wagers.append({
+                        "matchup": matchup_name, "type": f"🎯 PLAYER PROP (Pitcher)",
+                        "selection": f"{pitcher_name} {pick_side} {strikeout_line} Strikeouts",
+                        "raw_edge": p_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+                    })
+                already_scanned_player_props.add(pitcher_name)
 
-        # --- Evaluate ALL Live Extracted Batters dynamically ---
+        # -------------------------------------------------------------
+        # HYBRID BATTER RESOLUTION FILTER
+        # -------------------------------------------------------------
         active_batters = live_props_extracted.get(home, {}).get('batters', [])
+        # If live API list is empty, draw from the fallback vault map immediately
+        if not active_batters and home in ROSTER_VAULT:
+            active_batters = [ROSTER_VAULT[home]["batter"]]
+            
         for batter_name in active_batters:
-            seed_b = generate_stable_seed(batter_name + "_TB_PROP", 5000)
-            np.random.seed(seed_b % 9999999)
-            b_edge = np.random.uniform(-0.01, 0.09)
-            if b_edge > 0.04:
-                base_line = 1.5
-                pick_side = "OVER" if b_edge > 0.06 else "UNDER"
-                all_potential_wagers.append({
-                    "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
-                    "selection": f"{batter_name} {pick_side} {base_line} Total Bases",
-                    "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
-                })
-
-        # --- Evaluate Game Prop Market ---
-        seed_g = generate_stable_seed(home + "_MARKET_GAMEPROP", 6000)
-        np.random.seed(seed_g % 9999999)
-        g_edge = np.random.uniform(-0.02, 0.08)
-        if g_edge > 0.04:
-            prop_selection = f"First Inning Total Runs: OVER 0.5" if g_edge > 0.06 else f"Team to Score First: {home}"
-            all_potential_wagers.append({
-                "matchup": matchup_name, "type": "💎 GAME PROP", "selection": prop_selection,
-                "raw_edge": g_edge, "fraction": min(0.020, 0.03 * kelly_fraction)
-            })
-
-    # =====================================================================
-    # PHASE 2: SORTING & RISK ALLOCATION
-    # =====================================================================
-    optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
-    
-    st.markdown("## 📊 Mathematical Edge Ranking (Sorted Optimization Model)")
-    st.write("The model completed multi-endpoint event queries. Capital is deployed from highest to lowest edge strength:")
-    
-    running_total_liability = 0.0
-    
-    for idx, bet in enumerate(optimized_wagers):
-        if running_total_liability >= max_daily_liability:
-            st.caption("🔒 *Remaining edges suppressed: Portfolio exposure limit has been achieved for the day.*")
-            break
-            
-        wager_fraction = bet["fraction"]
-        wager_amt = bankroll * wager_fraction
-        
-        if running_total_liability + wager_amt > max_daily_liability:
-            wager_amt = max_daily_liability - running_total_liability
-            wager_fraction = wager_amt / bankroll
-            
-        if wager_amt > 0.01:
-            running_total_liability += wager_amt
-            
-            with st.container():
-                st.warning(f"🏆 **Edge Strength Rank: +{bet['raw_edge']*100:.2f}%** | {bet['matchup']}")
-                st.write(f"  * **Market Type:** {bet['type']}")
-                st.markdown(f"  * 👉 **RECOMMENDED SELECTION:** **{bet['selection']}**")
-                st.write(f"  * **Optimal Risk Allocation:** **${wager_amt:,.2f}** ({wager_fraction * 100:.1f}% of total bankroll)")
-                st.markdown("---")
-                
-    if not optimized_wagers:
-        st.info("No actionable efficiency edges detected across the current market board sample.")
-        
-    st.write(f"### 🛡️ Global Portfolio Risk Management Summary")
-    st.write(f"Total Capital Allocated: **${running_total_liability:,.2f}** / Max Allowed: ${max_daily_liability:,.2f}")
-    st.write(f"Actual Bankroll Exposure: **{ (running_total_liability / bankroll) * 100:.2f}%** out of a maximum {daily_max_exposure_pct}.00%")
+            if batter_name not in already_scanned_player_props:
+                seed_b = generate_stable_seed(batter_name + "_TB_PROP", 5000)
+                np.random.seed(seed_b % 9999999)
+                b_edge = np.random.uniform(-0.01, 0.09)
+                if b_edge > 0.04:
+                    base_line = 1.5
+                    pick_side = "OVER" if b_edge > 0.06 else "UNDER"
+                    all_potential_wagers.append({
+                        "matchup": matchup_name, "type": f"🔥 PLAYER PROP (Batter)",
+                        "selection": f"{batter_name} {pick_side} {base_line} Total Bases",
+                        "raw_edge": b_edge, "fraction": min(0.015, 0.03 * kelly_fraction)
+                    })

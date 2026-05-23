@@ -157,6 +157,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
                                         live_props_extracted[home_team_name]['batter'] = player_name
                 except Exception:
                     pass
+                    
         except Exception as api_err:
             st.error(f"Live API Fetch dropped: {api_err}. Reverting to safety simulation board.")
             games_found = []
@@ -260,4 +261,49 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             elif g_edge > 0.05:
                 prop_selection = f"Team to Score First: {home}"
             else:
-                prop_selection
+                prop_selection = "Will There Be an Extra Inning?: YES"
+                
+            all_potential_wagers.append({
+                "matchup": matchup_name, "type": "💎 GAME PROP", "selection": prop_selection,
+                "raw_edge": g_edge, "fraction": min(0.020, 0.03 * kelly_fraction)
+            })
+
+    # =====================================================================
+    # PHASE 2: SORTING & RISK ALLOCATION
+    # =====================================================================
+    optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
+    
+    st.markdown("## 📊 Mathematical Edge Ranking (Sorted Optimization Model)")
+    st.write("The model completed multi-endpoint event queries. Capital is deployed from highest to lowest edge strength:")
+    
+    running_total_liability = 0.0
+    
+    # Enumeration guarantees every unique loop iteration gets its own separate UI container ID
+    for idx, bet in enumerate(optimized_wagers):
+        if running_total_liability >= max_daily_liability:
+            st.caption("🔒 *Remaining edges suppressed: Portfolio exposure limit has been achieved for the day.*")
+            break
+            
+        wager_fraction = bet["fraction"]
+        wager_amt = bankroll * wager_fraction
+        
+        if running_total_liability + wager_amt > max_daily_liability:
+            wager_amt = max_daily_liability - running_total_liability
+            wager_fraction = wager_amt / bankroll
+            
+        if wager_amt > 0.01:
+            running_total_liability += wager_amt
+            
+            with st.container():
+                st.warning(f"🏆 **Edge Strength Rank: +{bet['raw_edge']*100:.2f}%** | {bet['matchup']}")
+                st.write(f"  * **Market Type:** {bet['type']}")
+                st.markdown(f"  * 👉 **RECOMMENDED SELECTION:** **{bet['selection']}**")
+                st.write(f"  * **Optimal Risk Allocation:** **${wager_amt:,.2f}** ({wager_fraction * 100:.1f}% of total bankroll)")
+                st.markdown("---")
+                
+    if not optimized_wagers:
+        st.info("No actionable efficiency edges detected across the current market board sample.")
+        
+    st.write(f"### 🛡️ Global Portfolio Risk Management Summary")
+    st.write(f"Total Capital Allocated: **${running_total_liability:,.2f}** / Max Allowed: ${max_daily_liability:,.2f}")
+    st.write(f"Actual Bankroll Exposure: **{ (running_total_liability / bankroll) * 100:.2f}%** out of a maximum {daily_max_exposure_pct}.00%")

@@ -67,7 +67,6 @@ def convert_prob_to_american_odds(prob: float) -> str:
         return f"+{odds}"
 
 def calculate_payout(odds_str: str, risk: float) -> float:
-    """Calculates clean profit return from an American odds string baseline."""
     try:
         odds = int(odds_str.replace("+", ""))
         if odds > 0:
@@ -85,13 +84,11 @@ st.set_page_config(layout="wide")
 st.title("⚾ MLB Quantitative Trading Dashboard")
 st.write("Multi-Agent Reinforcement Learning Prediction Engine")
 
-# Establish the persistent cloud database broker link
 try:
     db_conn = st.connection("gsheets", type=GSheetsConnection)
 except Exception:
     db_conn = None
 
-# Master Navigation System Split
 nav_tab_1, nav_tab_2 = st.tabs(["🚀 Live Edge Calculator", "📊 Financial Performance Audit Vault"])
 
 with nav_tab_1:
@@ -288,6 +285,9 @@ with nav_tab_1:
                     })
                 already_scanned_player_props.add(star_batter)
 
+        st.session_state.cached_optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
+        st.session_state.trading_slate_calculated = True
+
     st.button("Scan Complete Slate & Optimize Bets", on_click=execute_slate_optimization_callback)
 
     if st.session_state.trading_slate_calculated:
@@ -387,25 +387,19 @@ with nav_tab_2:
             vault_df = db_conn.read()
             
             if not vault_df.empty:
-                # Ensure date structures interpret correctly
                 vault_df["Date"] = pd.to_datetime(vault_df["Date"]).dt.date
                 vault_df["Risk Amount"] = vault_df["Risk Amount"].astype(float)
                 
-                # Dynamic performance pipeline compiler
                 def compute_window_metrics(dataframe, days_back):
                     today_date = datetime.now().date()
                     start_date = today_date - timedelta(days=days_back)
                     
-                    # Split down strictly to target time segment boundaries
                     if days_back == 1:
-                        # Yesterday window alignment
                         segment_df = dataframe[dataframe["Date"] == start_date]
                     else:
-                        # Multi-day segment tracking
                         segment_df = dataframe[(dataframe["Date"] >= start_date) & (dataframe["Date"] < today_date)]
                         
                     settled_df = segment_df[segment_df["Settled Status"].isin(["WIN", "LOSS", "PUSH"])]
-                    
                     staked = settled_df["Risk Amount"].sum()
                     net_profit = 0.0
                     
@@ -420,24 +414,19 @@ with nav_tab_2:
                     roi = (net_profit / staked) * 100.0 if staked > 0 else 0.0
                     return staked, net_profit, roi
 
-                # Run math compilers over rolling performance brackets
                 yest_staked, yest_profit, yest_roi = compute_window_metrics(vault_df, 1)
                 w7_staked, w7_profit, w7_roi = compute_window_metrics(vault_df, 7)
                 w30_staked, w30_profit, w30_roi = compute_window_metrics(vault_df, 30)
 
-                # Render analytical scoreboard panels cleanly
                 panel_1, panel_2, panel_3 = st.columns(3)
-                
                 with panel_1:
                     st.markdown("### 📅 Yesterday's Audit Summary")
                     st.metric(label="Total Amount Staked", value=f"${yest_staked:,.2f}")
                     st.metric(label="Net Win/Loss Returns", value=f"${yest_profit:,.2f}", delta=f"{yest_roi:.1f}% ROI")
-                    
                 with panel_2:
                     st.markdown("### ⏳ Prior 7-Day Rolling Summary")
                     st.metric(label="Total Amount Staked", value=f"${w7_staked:,.2f}")
                     st.metric(label="Net Win/Loss Returns", value=f"${w7_profit:,.2f}", delta=f"{w7_roi:.1f}% ROI")
-                    
                 with panel_3:
                     st.markdown("### 🏛️ Prior 30-Day Rolling Summary")
                     st.metric(label="Total Amount Staked", value=f"${w30_staked:,.2f}")

@@ -1,5 +1,6 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -185,6 +186,7 @@ def execute_slate_optimization_callback():
         away = game.get('away_team')
         matchup_name = f"{away} @ {home}"
         
+        # Resolve Player Names from Roster Vault matrix
         home_pitcher = live_props_extracted.get(home, {}).get('pitcher')
         star_batter = live_props_extracted.get(home, {}).get('batter')
         
@@ -289,52 +291,84 @@ def execute_slate_optimization_callback():
     st.session_state.cached_optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
     st.session_state.trading_slate_calculated = True
 
-# THE ANCHORED INTERFACE LAYOUT LINE: Placed strictly inside a standalone section to block callback erasure
+# Execute state routine via on_click parameter to keep layout containers locked
 st.button("Scan Complete Slate & Optimize Bets", on_click=execute_slate_optimization_callback)
 
 # =====================================================================
-# 3. DISPLAY LAYER (PERSISTENT RENDER CONTAINER WITH METRICS)
+# 3. DISPLAY & SELECTION LAYER (INTERACTIVE DATAFRAME ENGINE)
 # =====================================================================
 if st.session_state.trading_slate_calculated:
-    st.markdown("## 📊 Mathematical Edge Ranking (Sorted Optimization Model)")
-    st.write("The model completed multi-endpoint event queries. Capital is deployed from highest to lowest edge strength:")
-    
+    st.markdown("## 📊 Mathematical Edge Ranking (Interactive Matrix Board)")
+    st.write("Check or uncheck individual row boxes below to selectively build your execution order for the bookmakers:")
+
+    # 1. Map raw list data into a clean structured Pandas DataFrame
+    raw_rows = []
+    for item in st.session_state.cached_optimized_wagers:
+        raw_rows.append({
+            "Place Bet?": True,  # Default everything to active selection
+            "Edge Rank": f"+{item['raw_edge']*100:.2f}%",
+            "Matchup": item['matchup'],
+            "Market Type": item['type'],
+            "Selection Details": item['selection'],
+            "Odds": item['market_odds'],
+            "Model Prob": f"{item['model_probability']*100:.1f}%",
+            "Suggested Risk": round(bankroll * item['fraction'], 2),
+            "_raw_fraction": item['fraction']  # Hidden track keeper for bankroll allocations
+        })
+        
+    df_board = pd.DataFrame(raw_rows)
+
+    # 2. Render data table using st.data_editor to toggle input states dynamically
+    edited_df = st.data_editor(
+        df_board,
+        column_config={
+            "Place Bet?": st.column_config.CheckboxColumn("Place Bet?", default=True),
+            "Edge Rank": st.column_config.TextColumn("Edge Rank", disabled=True),
+            "Matchup": st.column_config.TextColumn("Matchup", disabled=True),
+            "Market Type": st.column_config.TextColumn("Market Type", disabled=True),
+            "Selection Details": st.column_config.TextColumn("Selection Details", disabled=True),
+            "Odds": st.column_config.TextColumn("Odds", disabled=True),
+            "Model Prob": st.column_config.TextColumn("Model Prob", disabled=True),
+            "Suggested Risk": st.column_config.NumberColumn("Risk Allocation ($)", format="$%.2f", disabled=True)
+        },
+        hide_index=True,
+        use_container_width=True
+    )
+
+    # 3. Filter DataFrame down exclusively to user-approved entries
+    confirmed_bets = edited_df[edited_df["Place Bet?"] == True]
+
+    st.markdown("---")
+    st.markdown("## 📜 Active Live Bet Slip Execution Order")
+
     running_total_liability = 0.0
-    
-    for idx, bet in enumerate(st.session_state.cached_optimized_wagers):
+    bets_placed_count = 0
+
+    for idx, row in confirmed_bets.iterrows():
         if running_total_liability >= max_daily_liability:
-            st.caption("🔒 *Remaining edges suppressed: Portfolio exposure limit has been achieved for the day.*")
+            st.error(f"🛑 **Portfolio Liability Limit Reached!** Further bets suppressed to protect capitalization lines.")
             break
             
-        wager_fraction = bet["fraction"]
-        wager_amt = bankroll * wager_fraction
+        wager_amt = row["Suggested Risk"]
         
+        # Cap position size if it risks breaking the aggregate daily exposure envelope
         if running_total_liability + wager_amt > max_daily_liability:
             wager_amt = max_daily_liability - running_total_liability
-            wager_fraction = wager_amt / bankroll
             
         if wager_amt > 0.01:
             running_total_liability += wager_amt
+            bets_placed_count += 1
             
             with st.container():
-                st.warning(f"🏆 **Edge Strength Rank: +{bet['raw_edge']*100:.2f}%** | {bet['matchup']}")
-                st.write(f"  * **Market Type:** {bet['type']}")
-                st.markdown(f"  * 👉 **RECOMMENDED SELECTION:** **{bet['selection']}**")
-                
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
-                    st.metric(label="Market Odds", value=bet['market_odds'])
-                with col_b:
-                    st.metric(label="Model Probability", value=f"{bet['model_probability']*100:.1f}%")
-                with col_c:
-                    st.metric(label="Pure Edge Value", value=f"+{bet['raw_edge']*100:.2f}%")
-                    
-                st.write(f"  * **Optimal Risk Allocation:** **${wager_amt:,.2f}** ({wager_fraction * 100:.1f}% of total bankroll)")
+                st.info(f"⚡ **Active Order #{bets_placed_count}** | {row['Matchup']} ({row['Market Type']})")
+                st.markdown(f"  * 👉 **SELECTION:** **{row['Selection Details']}** | **Odds:** `{row['Odds']}` | **Model Prob:** `{row['Model Prob']}`")
+                st.write(f"  * **Capital Deployment Command:** **${wager_amt:,.2f}** ({(wager_amt/bankroll)*100:.1f}% of starting bankroll)")
                 st.markdown("---")
-                
-    if not st.session_state.cached_optimized_wagers:
-        st.info("No actionable efficiency edges detected across the current market board sample.")
-        
+
+    if bets_placed_count == 0:
+        st.warning("No selections checked. Use the table checkboxes above to build an active live position sheet.")
+
+    # 4. Global Risk Dashboard readout metrics
     st.write(f"### 🛡️ Global Portfolio Risk Management Summary")
     st.write(f"Total Capital Allocated: **${running_total_liability:,.2f}** / Max Allowed: ${max_daily_liability:,.2f}")
     st.write(f"Actual Bankroll Exposure: **{(running_total_liability / bankroll) * 100:.2f}%** out of a maximum {daily_max_exposure_pct}.00%")

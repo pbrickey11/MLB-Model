@@ -84,11 +84,8 @@ st.set_page_config(layout="wide")
 st.title("⚾ MLB Quantitative Trading Dashboard")
 st.write("Multi-Agent Reinforcement Learning Prediction Engine")
 
-# Connect to Google Sheets broker
-try:
-    db_conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception:
-    db_conn = None
+# DIAGNOSTIC CONNECTION UNLEASHED: Removed try/except to expose the underlying cloud driver error message
+db_conn = st.connection("gsheets", type=GSheetsConnection)
 
 # Master Navigation System Split
 nav_tab_1, nav_tab_2 = st.tabs(["🚀 Live Edge Calculator", "📊 Financial Performance Audit Vault"])
@@ -104,7 +101,6 @@ with nav_tab_1:
 
     st.write(f"### Current Capital Baseline: ${bankroll:,.2f} | Max Liability Limit: ${max_daily_liability:,.2f}")
 
-    # Initialize State Keys with complete safety buffers
     if "trading_slate_calculated" not in st.session_state:
         st.session_state.trading_slate_calculated = False
     if "cached_optimized_wagers" not in st.session_state:
@@ -143,7 +139,6 @@ with nav_tab_1:
         "Pittsburgh Pirates": {"pitcher": "Mitch Keller", "batter": "Oneil Cruz"}
     }
 
-    # Standard execution channel block: Fires straight into session state vectors cleanly
     if st.button("🚀 Run Analytical Model Scanner", type="primary"):
         try:
             api_key = st.secrets["THE_ODDS_API_KEY"]
@@ -292,7 +287,6 @@ with nav_tab_1:
         st.session_state.cached_optimized_wagers = sorted(all_potential_wagers, key=lambda x: x["raw_edge"], reverse=True)
         st.session_state.trading_slate_calculated = True
 
-    # Render matrix rows dynamically based strictly on memory footprint presence
     if st.session_state.trading_slate_calculated and len(st.session_state.cached_optimized_wagers) > 0:
         st.markdown("## 📊 Mathematical Edge Ranking Matrix")
         
@@ -311,7 +305,6 @@ with nav_tab_1:
             
         df_board = pd.DataFrame(raw_rows)
 
-        # Standalone data grid decoupled from volatile submission wrappers
         edited_df = st.data_editor(
             df_board,
             column_config={
@@ -365,20 +358,16 @@ with nav_tab_1:
                     st.write(f"  * **Risk Allocation:** **${wager_amt:,.2f}**")
                     st.markdown("---")
 
-        # Isolated layout connection button anchored firmly to baseline block row
         if bets_placed_count > 0:
             if st.button("🔒 Lock & Commit Active Bet Slip to Cloud Vault", type="secondary"):
-                if db_conn is not None:
-                    try:
-                        current_db_df = db_conn.read()
-                        fresh_log_df = pd.DataFrame(logged_slips_list)
-                        combined_db_df = pd.concat([current_db_df, fresh_log_df], ignore_index=True)
-                        db_conn.update(data=combined_db_df)
-                        st.success("✅ Bet execution log safely committed to the cloud database vault!")
-                    except Exception as db_err:
-                        st.error(f"Database write dropped: {db_err}")
-                else:
-                    st.error("Database link offline. Check your secrets credentials layout.")
+                try:
+                    current_db_df = db_conn.read()
+                    fresh_log_df = pd.DataFrame(logged_slips_list)
+                    combined_db_df = pd.concat([current_db_df, fresh_log_df], ignore_index=True)
+                    db_conn.update(data=combined_db_df)
+                    st.success("✅ Bet execution log safely committed to the cloud database vault!")
+                except Exception as db_err:
+                    st.error(f"Database write dropped: {db_err}")
 
         st.write(f"### 🛡️ Portfolio Risk Summary")
         st.write(f"Total Capital Allocated: **${running_total_liability:,.2f}** / Max Allowed: ${max_daily_liability:,.2f}")
@@ -392,86 +381,83 @@ with nav_tab_1:
 with nav_tab_2:
     st.markdown("## 📈 Performance & Rolling ROI Analytics Dashboard")
     
-    if db_conn is not None:
-        try:
-            vault_df = db_conn.read()
+    try:
+        vault_df = db_conn.read()
+        
+        if not vault_df.empty:
+            vault_df["Date"] = pd.to_datetime(vault_df["Date"]).dt.date
+            vault_df["Risk Amount"] = vault_df["Risk Amount"].astype(float)
             
-            if not vault_df.empty:
-                vault_df["Date"] = pd.to_datetime(vault_df["Date"]).dt.date
-                vault_df["Risk Amount"] = vault_df["Risk Amount"].astype(float)
+            def compute_window_metrics(dataframe, days_back):
+                today_date = datetime.now().date()
+                start_date = today_date - timedelta(days=days_back)
                 
-                def compute_window_metrics(dataframe, days_back):
-                    today_date = datetime.now().date()
-                    start_date = today_date - timedelta(days=days_back)
+                if days_back == 1:
+                    segment_df = dataframe[dataframe["Date"] == start_date]
+                else:
+                    segment_df = dataframe[(dataframe["Date"] >= start_date) & (dataframe["Date"] < today_date)]
                     
-                    if days_back == 1:
-                        segment_df = dataframe[dataframe["Date"] == start_date]
-                    else:
-                        segment_df = dataframe[(dataframe["Date"] >= start_date) & (dataframe["Date"] < today_date)]
+                settled_df = segment_df[segment_df["Settled Status"].isin(["WIN", "LOSS", "PUSH"])]
+                staked = settled_df["Risk Amount"].sum()
+                net_profit = 0.0
+                
+                for _, row in settled_df.iterrows():
+                    status = row["Settled Status"]
+                    risk = row["Risk Amount"]
+                    if status == "LOSS":
+                        net_profit -= risk
+                    elif status == "WIN":
+                        net_profit += calculate_payout(str(row["Odds"]), risk)
                         
-                    settled_df = segment_df[segment_df["Settled Status"].isin(["WIN", "LOSS", "PUSH"])]
-                    staked = settled_df["Risk Amount"].sum()
-                    net_profit = 0.0
-                    
-                    for _, row in settled_df.iterrows():
-                        status = row["Settled Status"]
-                        risk = row["Risk Amount"]
-                        if status == "LOSS":
-                            net_profit -= risk
-                        elif status == "WIN":
-                            net_profit += calculate_payout(str(row["Odds"]), risk)
-                            
-                    roi = (net_profit / staked) * 100.0 if staked > 0 else 0.0
-                    return staked, net_profit, roi
+                roi = (net_profit / staked) * 100.0 if staked > 0 else 0.0
+                return staked, net_profit, roi
 
-                yest_staked, yest_profit, yest_roi = compute_window_metrics(vault_df, 1)
-                w7_staked, w7_profit, w7_roi = compute_window_metrics(vault_df, 7)
-                w30_staked, w30_profit, w30_roi = compute_window_metrics(vault_df, 30)
+            yest_staked, yest_profit, yest_roi = compute_window_metrics(vault_df, 1)
+            w7_staked, w7_profit, w7_roi = compute_window_metrics(vault_df, 7)
+            w30_staked, w30_profit, w30_roi = compute_window_metrics(vault_df, 30)
 
-                panel_1, panel_2, panel_3 = st.columns(3)
-                with panel_1:
-                    st.markdown("### 📅 Yesterday's Audit Summary")
-                    st.metric(label="Total Amount Staked", value=f"${yest_staked:,.2f}")
-                    st.metric(label="Net Win/Loss Returns", value=f"${yest_profit:,.2f}", delta=f"{yest_roi:.1f}% ROI")
-                with panel_2:
-                    st.markdown("### ⏳ Prior 7-Day Rolling Summary")
-                    st.metric(label="Total Amount Staked", value=f"${w7_staked:,.2f}")
-                    st.metric(label="Net Win/Loss Returns", value=f"${w7_profit:,.2f}", delta=f"{w7_roi:.1f}% ROI")
-                with panel_3:
-                    st.markdown("### 🏛️ Prior 30-Day Rolling Summary")
-                    st.metric(label="Total Amount Staked", value=f"${w30_staked:,.2f}")
-                    st.metric(label="Net Win/Loss Returns", value=f"${w30_profit:,.2f}", delta=f"{w30_roi:.1f}% ROI")
+            panel_1, panel_2, panel_3 = st.columns(3)
+            with panel_1:
+                st.markdown("### 📅 Yesterday's Audit Summary")
+                st.metric(label="Total Amount Staked", value=f"${yest_staked:,.2f}")
+                st.metric(label="Net Win/Loss Returns", value=f"${yest_profit:,.2f}", delta=f"{yest_roi:.1f}% ROI")
+            with panel_2:
+                st.markdown("### ⏳ Prior 7-Day Rolling Summary")
+                st.metric(label="Total Amount Staked", value=f"${w7_staked:,.2f}")
+                st.metric(label="Net Win/Loss Returns", value=f"${w7_profit:,.2f}", delta=f"{w7_roi:.1f}% ROI")
+            with panel_3:
+                st.markdown("### 🏛️ Prior 30-Day Rolling Summary")
+                st.metric(label="Total Amount Staked", value=f"${w30_staked:,.2f}")
+                st.metric(label="Net Win/Loss Returns", value=f"${w30_profit:,.2f}", delta=f"{w30_roi:.1f}% ROI")
 
-                st.markdown("---")
-                st.markdown("### 📅 Historical Audit Ledger Vault Management Table")
-                st.write("Modify the status codes below to audit settlements each morning:")
+            st.markdown("---")
+            st.markdown("### 📅 Historical Audit Ledger Vault Management Table")
+            st.write("Modify the status codes below to audit settlements each morning:")
 
-                updated_vault_df = st.data_editor(
-                    vault_df,
-                    column_config={
-                        "Date": st.column_config.DateColumn("Date", disabled=True),
-                        "Matchup": st.column_config.TextColumn("Matchup", disabled=True),
-                        "Market Type": st.column_config.TextColumn("Market Type", disabled=True),
-                        "Selection Details": st.column_config.TextColumn("Selection Details", disabled=True),
-                        "Odds": st.column_config.TextColumn("Odds", disabled=True),
-                        "Model Prob": st.column_config.TextColumn("Model Prob", disabled=True),
-                        "Risk Amount": st.column_config.NumberColumn("Risk Amount", format="$%.2f", disabled=True),
-                        "Settled Status": st.column_config.SelectboxColumn(
-                            "Settled Status",
-                            options=["PENDING", "WIN", "LOSS", "PUSH"],
-                            required=True
-                        )
-                    },
-                    hide_index=True, use_container_width=True, key="vault_audit_matrix"
-                )
-                
-                if st.button("💾 Save Settled Ledger Changes & Update Metrics"):
-                    db_conn.update(data=updated_vault_df)
-                    st.success("✅ Audit values committed. Financial dashboards updated successfully!")
-                    st.rerun()
-            else:
-                st.info("No saved positions detected in the repository tracking vault.")
-        except Exception as read_err:
-            st.error(f"Error accessing vault entries: {read_err}")
-    else:
-        st.warning("Google Sheet connection tokens unconfigured. Vault auditing operations offline.")
+            updated_vault_df = st.data_editor(
+                vault_df,
+                column_config={
+                    "Date": st.column_config.DateColumn("Date", disabled=True),
+                    "Matchup": st.column_config.TextColumn("Matchup", disabled=True),
+                    "Market Type": st.column_config.TextColumn("Market Type", disabled=True),
+                    "Selection Details": st.column_config.TextColumn("Selection Details", disabled=True),
+                    "Odds": st.column_config.TextColumn("Odds", disabled=True),
+                    "Model Prob": st.column_config.TextColumn("Model Prob", disabled=True),
+                    "Risk Amount": st.column_config.NumberColumn("Risk Amount", format="$%.2f", disabled=True),
+                    "Settled Status": st.column_config.SelectboxColumn(
+                        "Settled Status",
+                        options=["PENDING", "WIN", "LOSS", "PUSH"],
+                        required=True
+                    )
+                },
+                hide_index=True, use_container_width=True, key="vault_audit_matrix"
+            )
+            
+            if st.button("💾 Save Settled Ledger Changes & Update Metrics"):
+                db_conn.update(data=updated_vault_df)
+                st.success("✅ Audit values committed. Financial dashboards updated successfully!")
+                st.rerun()
+        else:
+            st.info("No saved positions detected in the repository tracking vault.")
+    except Exception as read_err:
+        st.error(f"Error accessing vault entries: {read_err}")

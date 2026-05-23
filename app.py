@@ -103,7 +103,7 @@ if st.button("Scan Complete Slate & Optimize Bets"):
             st.error(f"Live API Fetch failed: {api_err}. Reverting to safety simulation board.")
             games_found = []
 
-    # Airtight Production Dataset (Ensures every single field is unique and populated)
+    # Simulation dataset used if no active API key is connected
     if not games_found:
         st.caption("⚠️ Operating in simulation mode. Compiling complete multi-market slate:")
         games_found = [
@@ -122,9 +122,16 @@ if st.button("Scan Complete Slate & Optimize Bets"):
     for game in games_found:
         home = game.get('home_team')
         away = game.get('away_team')
-        home_pitcher = game.get('home_pitcher', f"{home} Pitcher")
-        star_batter = game.get('star_batter', f"{home} Hitter")
         matchup_name = f"{away} @ {home}"
+        
+        # DYNAMIC LIVE FALLBACKS: If live web data lacks explicit names, generate distinct team-specific identifiers
+        home_pitcher = game.get('home_pitcher')
+        if not home_pitcher or home_pitcher == "Starting Pitcher":
+            home_pitcher = f"{home} Starting Pitcher"
+            
+        star_batter = game.get('star_batter')
+        if not star_batter or star_batter == "Top Batter":
+            star_batter = f"{home} Lead Hitter"
         
         # --- Evaluate Moneyline Market ---
         seed_ml = generate_stable_seed(home + "ml", 111)

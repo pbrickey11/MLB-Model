@@ -33,7 +33,7 @@ def generate_stable_seed(string_input: str, offset: int) -> int:
 
 def convert_prob_to_american_odds(prob: float) -> str:
     if prob <= 0 or prob >= 1: return "+100"
-    return f"-{int(round((prob / (1.0 - prob)) * 100.0))}" if prob > 0.50_f else f"+{int(round(((1.0 - prob) / prob) * 100.0))}"
+    return f"-{int(round((prob / (1.0 - prob)) * 100.0))}" if prob > 0.50 else f"+{int(round(((1.0 - prob) / prob) * 100.0))}"
 
 def calculate_payout(odds_str: str, risk: float) -> float:
     try:
